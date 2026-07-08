@@ -1,0 +1,4 @@
+- Index mandate_id and transaction_id from the first migration, no exceptions
+- Never SELECT * — name the columns each query actually needs
+- Use SQLAlchemy connection pooling (pool_size set explicitly, not default)
+- Paginate any endpoint that lists more than one page of results

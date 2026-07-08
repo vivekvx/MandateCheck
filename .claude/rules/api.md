@@ -1,0 +1,3 @@
+- Rate limit every public endpoint, especially /evaluate_transaction
+- /health checks DB connectivity, returns 200 or 503, nothing else
+- Structured JSON logs on every request: timestamp, request_id, mandate_id if present

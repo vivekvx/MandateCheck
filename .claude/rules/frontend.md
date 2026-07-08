@@ -1,0 +1,3 @@
+- Live feed uses WebSockets, never polling
+- Skeleton states on first load, not blank spinners
+- No component library beyond what's already in package.json unless asked
