@@ -1,0 +1,150 @@
+@import "tailwindcss";
+
+/*
+  MandateCheck design tokens.
+
+  Point of view: a deterministic payment gate, not a generic SaaS
+  dashboard. Ink-dark neutrals read as engineered and precise rather
+  than soft/consumer. One brand accent (verdant) doubles as the
+  "allow" signal, since the whole product's job is deciding what gets
+  through the gate. Block/flag states use their own semantic colors
+  so they never get confused with the brand accent. Geist Mono is
+  reserved for anything that is data (amounts, ids, timestamps),
+  never for prose, to mark the line between "the system says" and
+  "we're telling you."
+*/
+
+:root {
+  /* Neutral scale - ink, not pure black/white */
+  --color-ink-950: #0b0d0c;
+  --color-ink-900: #131715;
+  --color-ink-800: #1d211f;
+  --color-ink-700: #2b302d;
+  --color-ink-600: #454b47;
+  --color-ink-500: #6b7570;
+  --color-ink-400: #97a19c;
+  --color-ink-300: #c2cac6;
+  --color-ink-200: #dee3e0;
+  --color-ink-100: #eef1ef;
+  --color-ink-50: #f7f9f8;
+
+  /* Brand / allow signal - desaturated verdant, not a stock green-500 */
+  --color-verdant-700: #1f5f4d;
+  --color-verdant-600: #26735c;
+  --color-verdant-500: #2f8a6f;
+  --color-verdant-400: #55a68d;
+  --color-verdant-100: #dcf0e8;
+
+  /* Semantic states - separate from brand accent on purpose */
+  --color-block-600: #a13f3f;
+  --color-block-500: #b94f4f;
+  --color-block-100: #f6e2e0;
+
+  --color-flag-600: #a3781f;
+  --color-flag-500: #bc8f2f;
+  --color-flag-100: #f5ead2;
+
+  /* Surface + text (light mode default) */
+  --color-surface: var(--color-ink-50);
+  --color-surface-raised: #ffffff;
+  --color-border: var(--color-ink-200);
+  --color-text-primary: var(--color-ink-900);
+  --color-text-muted: var(--color-ink-600);
+
+  /* Type scale - dashboard-appropriate, no landing-page drama */
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.9375rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.0625rem;
+  --text-lg--line-height: 1.6rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 2rem;
+  --text-3xl: 1.875rem;
+  --text-3xl--line-height: 2.25rem;
+
+  /* Spacing scale - 4px base, tight-ish for control-room density */
+  --spacing-0: 0px;
+  --spacing-1: 0.25rem;
+  --spacing-2: 0.5rem;
+  --spacing-3: 0.75rem;
+  --spacing-4: 1rem;
+  --spacing-5: 1.25rem;
+  --spacing-6: 1.5rem;
+  --spacing-8: 2rem;
+  --spacing-10: 2.5rem;
+  --spacing-12: 3rem;
+  --spacing-16: 4rem;
+
+  /* One radius system, locked: sharp-leaning, reads as precise */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-surface: var(--color-ink-950);
+    --color-surface-raised: var(--color-ink-900);
+    --color-border: var(--color-ink-700);
+    --color-text-primary: var(--color-ink-50);
+    --color-text-muted: var(--color-ink-400);
+  }
+}
+
+@theme inline {
+  --color-ink-950: var(--color-ink-950);
+  --color-ink-900: var(--color-ink-900);
+  --color-ink-800: var(--color-ink-800);
+  --color-ink-700: var(--color-ink-700);
+  --color-ink-600: var(--color-ink-600);
+  --color-ink-500: var(--color-ink-500);
+  --color-ink-400: var(--color-ink-400);
+  --color-ink-300: var(--color-ink-300);
+  --color-ink-200: var(--color-ink-200);
+  --color-ink-100: var(--color-ink-100);
+  --color-ink-50: var(--color-ink-50);
+
+  --color-verdant-700: var(--color-verdant-700);
+  --color-verdant-600: var(--color-verdant-600);
+  --color-verdant-500: var(--color-verdant-500);
+  --color-verdant-400: var(--color-verdant-400);
+  --color-verdant-100: var(--color-verdant-100);
+
+  --color-block-600: var(--color-block-600);
+  --color-block-500: var(--color-block-500);
+  --color-block-100: var(--color-block-100);
+
+  --color-flag-600: var(--color-flag-600);
+  --color-flag-500: var(--color-flag-500);
+  --color-flag-100: var(--color-flag-100);
+
+  --color-surface: var(--color-surface);
+  --color-surface-raised: var(--color-surface-raised);
+  --color-border: var(--color-border);
+  --color-text-primary: var(--color-text-primary);
+  --color-text-muted: var(--color-text-muted);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: var(--text-base);
+  line-height: var(--text-base--line-height);
+}
+
+* {
+  border-color: var(--color-border);
+}
