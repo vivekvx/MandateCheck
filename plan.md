@@ -1,15 +1,16 @@
 # MandateCheck — build plan
 
 ## Current phase
-Phase 0: scaffolding (this file, CLAUDE.md, rules, skills, folder structure)
+Phase 5: polish + demo (final phase)
 
 ## Build order — do not jump ahead
-1. [ ] Postgres schema + Alembic migration (mandates, transactions/audit log)
-2. [ ] Rules engine (rules_engine.py) + all 8 adversarial test scenarios passing
-3. [ ] FastAPI endpoints: /mandates, /evaluate_transaction, /health
-4. [ ] LLM agent harness (LiteLLM -> Groq) to simulate attacks against the gate
-5. [ ] Next.js dashboard: create mandate, live feed, kill switch
-6. [ ] Demo recording: scenario 2 (injection blocked) + scenario 7 (kill switch)
+1-4. [x] done
+5. [ ] Run harness against real Groq output (manual step — needs a real
+   GROQ_API_KEY, see below)
+6. [x] Impeccable design QA pass — 9 issues found and fixed, verified
+   clean build
+7. [ ] Demo recording: scenario 2 (injection blocked) + scenario 7
+   (kill switch), using real harness output where possible
 
 ## Decisions already made — do not revisit without explicit discussion
 - Name: MandateCheck
@@ -24,4 +25,8 @@ Phase 0: scaffolding (this file, CLAUDE.md, rules, skills, folder structure)
 - Multi-platform mandate aggregation (ChatGPT + Claude + Gullak in one view)
 
 ## Open questions — flag, don't silently decide
-- None yet. Add here if one comes up mid-build instead of guessing.
+- Frontend host port is 4000, not 3000/7000 (both collided locally) —
+  confirmed in docker-compose.yml and README, NEXT_PUBLIC_API_BASE_URL
+  unaffected (still points at backend's 8000)
+- No auth anywhere in the app; KillSwitch scoped to NEXT_PUBLIC_DEMO_USER_ID
+  — deliberate, fine for demo, not a real multi-user boundary
