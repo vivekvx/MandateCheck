@@ -1,0 +1,66 @@
+import uuid
+
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    String,
+    Text,
+    func,
+)
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.db import Base
+
+
+class Mandate(Base):
+    __tablename__ = "mandates"
+
+    mandate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    agent_id: Mapped[str] = mapped_column(String, nullable=False)
+    agent_platform: Mapped[str] = mapped_column(String, nullable=False)
+    agent_display_name: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped["DateTime"] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    expires_at: Mapped["DateTime"] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="active")
+    max_amount_per_txn: Mapped[float] = mapped_column(Numeric, nullable=False)
+    max_amount_per_window: Mapped[float] = mapped_column(Numeric, nullable=False)
+    window_duration: Mapped[str] = mapped_column(String, nullable=False)
+    max_amount_total: Mapped[float] = mapped_column(Numeric, nullable=False)
+    merchant_allowlist: Mapped[list] = mapped_column(JSON, nullable=False)
+    category_allowlist: Mapped[list] = mapped_column(JSON, nullable=False)
+    allowed_time_window: Mapped[dict] = mapped_column(JSON, nullable=False)
+    original_intent_text: Mapped[str] = mapped_column(Text, nullable=False)
+    user_facing_summary: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class TransactionLog(Base):
+    __tablename__ = "transaction_logs"
+
+    transaction_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True
+    )
+    mandate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("mandates.mandate_id"),
+        index=True,
+        nullable=False,
+    )
+    proposed_amount: Mapped[float] = mapped_column(Numeric, nullable=False)
+    merchant_id: Mapped[str] = mapped_column(String, nullable=False)
+    category: Mapped[str] = mapped_column(String, nullable=False)
+    timestamp: Mapped["DateTime"] = mapped_column(DateTime(timezone=True), nullable=False)
+    source_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    agent_reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decision: Mapped[str] = mapped_column(String, nullable=False)
+    reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped["DateTime"] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
