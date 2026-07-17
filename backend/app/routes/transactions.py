@@ -193,36 +193,57 @@ async def evaluate_transaction(
 ) -> TransactionDecisionOut:
     request_id = str(uuid.uuid4())
 
-    mandate_row = db.get(Mandate, body.mandate_id)
-    if mandate_row is None:
-        raise HTTPException(status_code=404, detail="mandate not found")
+    # Fail closed: any unhandled error between here and the commit must
+    # surface as a rejection, never as an "allow" the caller could act on.
+    try:
+        mandate_row = db.get(Mandate, body.mandate_id)
+        if mandate_row is None:
+            raise HTTPException(status_code=404, detail="mandate not found")
 
-    domain_mandate = _mandate_row_to_domain(mandate_row)
-    domain_txn = _request_to_domain(body)
-    window_seconds = domain_mandate.window_duration
-    context, already_logged = _build_context(db, mandate_row, body, window_seconds)
+        domain_mandate = _mandate_row_to_domain(mandate_row)
+        domain_txn = _request_to_domain(body)
+        window_seconds = domain_mandate.window_duration
+        context, already_logged = _build_context(db, mandate_row, body, window_seconds)
 
-    decision = rules_engine.evaluate(domain_txn, domain_mandate, context)
-    outcome = decision.outcome.lower()
+        decision = rules_engine.evaluate(domain_txn, domain_mandate, context)
+        outcome = decision.outcome.lower()
 
-    # transaction_id is the client-generated PK; a replay reuses the same
-    # id, so there's nothing new to persist — the original row already
-    # holds the first decision.
-    if not already_logged:
-        log_row = TransactionLog(
-            transaction_id=body.transaction_id,
-            mandate_id=body.mandate_id,
-            proposed_amount=body.proposed_amount,
-            merchant_id=body.merchant_id,
-            category=body.category,
-            timestamp=body.timestamp,
-            source_content=body.source_content,
-            agent_reasoning=body.agent_reasoning,
-            decision=outcome,
-            reason=decision.reason,
+        # transaction_id is the client-generated PK; a replay reuses the same
+        # id, so there's nothing new to persist — the original row already
+        # holds the first decision.
+        if not already_logged:
+            log_row = TransactionLog(
+                transaction_id=body.transaction_id,
+                mandate_id=body.mandate_id,
+                proposed_amount=body.proposed_amount,
+                merchant_id=body.merchant_id,
+                category=body.category,
+                timestamp=body.timestamp,
+                source_content=body.source_content,
+                agent_reasoning=body.agent_reasoning,
+                decision=outcome,
+                reason=decision.reason,
+            )
+            db.add(log_row)
+            db.commit()
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            json.dumps(
+                {
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "request_id": request_id,
+                    "mandate_id": str(body.mandate_id),
+                    "decision": "block",
+                    "reason": "internal error during evaluation (fail closed)",
+                }
+            )
         )
-        db.add(log_row)
-        db.commit()
+        raise HTTPException(
+            status_code=503,
+            detail="internal error during evaluation; transaction blocked (fail closed)",
+        )
 
     await manager.broadcast(
         {
