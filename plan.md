@@ -5,8 +5,8 @@ Phase 5: polish + demo (final phase)
 
 ## Build order — do not jump ahead
 1-4. [x] done
-5. [ ] Run harness against real Groq output (manual step — needs a real
-   GROQ_API_KEY, see below)
+5. [x] Run harness against real Groq output — done 2026-07-18, all 4
+   scenarios live, transcript in backend/harness/demo-run-output.md
 6. [x] Impeccable design QA pass — 9 issues found and fixed, verified
    clean build
 7. [ ] Demo recording: scenario 2 (injection blocked) + scenario 7
