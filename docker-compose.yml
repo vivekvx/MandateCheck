@@ -23,6 +23,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://mandatecheck:mandatecheck@postgres:5432/mandatecheck}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:7009}
     depends_on:
       postgres:
         condition: service_healthy
@@ -40,7 +41,7 @@ services:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
         NEXT_PUBLIC_DEMO_USER_ID: ${NEXT_PUBLIC_DEMO_USER_ID:-demo-user}
     ports:
-      - "4000:3000"
+      - "7009:3000"
     depends_on:
       backend:
         condition: service_healthy

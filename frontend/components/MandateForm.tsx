@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { ApiError } from "@/lib/api/client";
 import { createMandate, type Mandate } from "@/lib/api/mandates";
 
 interface MandateFormProps {
@@ -96,7 +95,7 @@ export default function MandateForm({ onCreated }: MandateFormProps) {
       setForm(initialState);
       onCreated?.(mandate);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to create mandate.");
+      setError(err instanceof Error ? err.message : "Failed to create mandate.");
     } finally {
       setSubmitting(false);
     }

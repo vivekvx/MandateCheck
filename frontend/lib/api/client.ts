@@ -14,13 +14,34 @@ export class ApiError extends Error {
 }
 
 function extractMessage(status: number, body: unknown): string {
-  if (
-    body &&
-    typeof body === "object" &&
-    "detail" in body &&
-    typeof (body as { detail: unknown }).detail === "string"
-  ) {
-    return (body as { detail: string }).detail;
+  if (body && typeof body === "object" && "detail" in body) {
+    const detail = (body as { detail: unknown }).detail;
+
+    if (typeof detail === "string") {
+      return detail;
+    }
+
+    // FastAPI validation errors: detail is a list of {loc, msg, type}
+    if (Array.isArray(detail)) {
+      const messages = detail
+        .map((item) => {
+          if (item && typeof item === "object" && "msg" in item) {
+            const loc = Array.isArray((item as { loc?: unknown[] }).loc)
+              ? (item as { loc: unknown[] }).loc
+                  .filter((part) => part !== "body")
+                  .join(".")
+              : undefined;
+            const msg = (item as { msg: unknown }).msg;
+            return loc ? `${loc}: ${msg}` : String(msg);
+          }
+          return null;
+        })
+        .filter((m): m is string => Boolean(m));
+
+      if (messages.length > 0) {
+        return messages.join("; ");
+      }
+    }
   }
   return `Request failed with status ${status}`;
 }

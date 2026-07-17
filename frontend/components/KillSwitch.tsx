@@ -20,6 +20,7 @@ export default function KillSwitch() {
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string>("");
   const [revokeState, setRevokeState] = useState<RevokeState>("idle");
+  const [revokeError, setRevokeError] = useState<string | null>(null);
 
   const loadMandates = () => {
     setLoading(true);
@@ -43,12 +44,14 @@ export default function KillSwitch() {
   const handleConfirm = async () => {
     if (!selectedId) return;
     setRevokeState("revoking");
+    setRevokeError(null);
     try {
       await revokeMandate(selectedId);
       setRevokeState("done");
       setMandates((prev) => prev.filter((m) => m.mandate_id !== selectedId));
       setSelectedId((prev) => (prev === selectedId ? "" : prev));
-    } catch {
+    } catch (err) {
+      setRevokeError(err instanceof Error ? err.message : "Revoke failed — try again.");
       setRevokeState("error");
     }
   };
@@ -126,7 +129,7 @@ export default function KillSwitch() {
           )}
           {revokeState === "error" && (
             <p className="text-sm text-block-600 dark:text-block-500">
-              Revoke failed — try again.
+              {revokeError ?? "Revoke failed — try again."}
             </p>
           )}
         </div>
