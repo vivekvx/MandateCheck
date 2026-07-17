@@ -25,7 +25,7 @@ Phase 5: polish + demo (final phase)
 - Multi-platform mandate aggregation (ChatGPT + Claude + Gullak in one view)
 
 ## Open questions — flag, don't silently decide
-- Frontend host port is 4000, not 3000/7000 (both collided locally) —
+- Frontend host port is 7009, not 3000/4000 (both collided locally) —
   confirmed in docker-compose.yml and README, NEXT_PUBLIC_API_BASE_URL
   unaffected (still points at backend's 8000)
 - No auth anywhere in the app; KillSwitch scoped to NEXT_PUBLIC_DEMO_USER_ID
