@@ -1,0 +1,42 @@
+# Render Blueprint — repo prep only, not yet deployed. Review before
+# connecting this repo in the Render dashboard.
+#
+# NOTE ON MIGRATIONS: backend/Dockerfile's CMD already runs
+# `alembic upgrade head` before starting uvicorn on every container start
+# (see backend/Dockerfile line 18). alembic upgrade head is idempotent, so
+# this is safe to run on every deploy/restart, and no separate release/
+# pre-deploy command is required for that step. If a dedicated pre-deploy
+# hook is preferred instead, Render's current field for that is
+# `preDeployCommand` on the service — I have NOT verified this field name
+# against Render's current docs, so treat it as unconfirmed and check the
+# Render dashboard/docs before relying on it.
+#
+# NOTE ON DATABASE SYNTAX: the `databases:` top-level key below is Render's
+# documented blueprint syntax for a managed Postgres instance as of when
+# this was written. I have not verified this against Render's current docs
+# in this session — confirm the `databases:` block (plan name, region,
+# postgresMajorVersion) manually before applying the blueprint.
+
+databases:
+  - name: mandatecheck-db
+    plan: free
+    databaseName: mandatecheck
+    user: mandatecheck
+
+services:
+  - type: web
+    name: mandatecheck-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mandatecheck-db
+          property: connectionString
+      - key: FRONTEND_ORIGIN
+        sync: false # set manually to the real Vercel URL once known — see README Deployment section
+      - key: GROQ_API_KEY
+        sync: false

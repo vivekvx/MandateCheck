@@ -1,6 +1,13 @@
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_BASE_URL ?? "ws://localhost:8000";
+
+// Derive the WS scheme from API_BASE_URL's scheme rather than hardcoding
+// ws://. Deployed backend (Render) is https://, so this becomes wss:// —
+// required since browsers block insecure ws:// connections from an https
+// page. NEXT_PUBLIC_WS_BASE_URL remains a manual override if ever needed.
+const WS_BASE_URL =
+  process.env.NEXT_PUBLIC_WS_BASE_URL ??
+  API_BASE_URL.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
 
 export interface TransactionBroadcast {
   mandate_id: string;
