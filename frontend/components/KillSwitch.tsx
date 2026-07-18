@@ -6,12 +6,9 @@ import {
   revokeMandate,
   type MandateSummary,
 } from "@/lib/api/transactions";
-
-// Single-user demo app: no auth layer exists anywhere in this build
-// (see CLAUDE.md scope), so there is no session to derive a user_id
-// from. Scoped to a fixed demo user, consistent with the simulated-rail
-// posture of the rest of the product.
-const DEMO_USER_ID = process.env.NEXT_PUBLIC_DEMO_USER_ID ?? "demo-user";
+// No auth layer in this build (see CLAUDE.md scope) — scoped to the
+// per-browser session identity, same one the mandate form creates under.
+import { getSessionIdentity } from "@/lib/identity";
 
 type RevokeState = "idle" | "confirming" | "revoking" | "done" | "error";
 
@@ -24,7 +21,7 @@ export default function KillSwitch() {
 
   const loadMandates = () => {
     setLoading(true);
-    fetchActiveMandates(DEMO_USER_ID)
+    fetchActiveMandates(getSessionIdentity().userId)
       .then((items) => {
         setMandates(items);
         setSelectedId((current) =>

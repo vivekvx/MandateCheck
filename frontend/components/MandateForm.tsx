@@ -2,16 +2,19 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { createMandate, type Mandate } from "@/lib/api/mandates";
+import { sessionShortId, type SessionIdentity } from "@/lib/identity";
 
 interface MandateFormProps {
+  // Auto-generated per browser (lib/identity.ts) — the form never asks
+  // for user_id/agent_id; they're injected into the payload at submit.
+  identity: SessionIdentity;
+  // Optional prefill (e.g. a template's values) applied over the demo
+  // defaults after mount.
+  initialValues?: Partial<FormState>;
   onCreated?: (mandate: Mandate) => void;
 }
 
-interface FormState {
-  user_id: string;
-  agent_id: string;
-  agent_display_name: string;
-  agent_platform: string;
+export interface FormState {
   expires_at: string;
   max_amount_per_txn: string;
   max_amount_per_window: string;
@@ -26,10 +29,6 @@ interface FormState {
 }
 
 const initialState: FormState = {
-  user_id: "",
-  agent_id: "",
-  agent_display_name: "",
-  agent_platform: "",
   expires_at: "",
   max_amount_per_txn: "",
   max_amount_per_window: "",
@@ -43,25 +42,22 @@ const initialState: FormState = {
   user_facing_summary: "",
 };
 
+// datetime-local wants local "YYYY-MM-DDTHH:mm", no timezone suffix
+export function toDatetimeLocal(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate()
+  )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 // Demo-friendly defaults so the form is submittable with one click on stage.
 // Pure client-side prefill of form state — the payload sent to the backend is
 // still whatever the fields contain at submit time, and every field stays
-// editable. Computed per call so "Expires at" is always now+7d and the agent
-// gets a fresh UUID.
+// editable. Computed per call so "Expires at" is always now+7d.
 function makeDemoDefaults(): FormState {
-  const expires = new Date(Date.now() + 7 * 24 * 3600 * 1000);
-  // datetime-local wants local "YYYY-MM-DDTHH:mm", no timezone suffix
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const expiresLocal = `${expires.getFullYear()}-${pad(expires.getMonth() + 1)}-${pad(
-    expires.getDate()
-  )}T${pad(expires.getHours())}:${pad(expires.getMinutes())}`;
   return {
     ...initialState,
-    user_id: "demo-user",
-    agent_id: crypto.randomUUID(),
-    agent_display_name: "Demo Agent",
-    agent_platform: "claude",
-    expires_at: expiresLocal,
+    expires_at: toDatetimeLocal(new Date(Date.now() + 7 * 24 * 3600 * 1000)),
     window_duration: "24h",
     max_amount_per_txn: "25",
     max_amount_per_window: "100",
@@ -76,13 +72,10 @@ function makeDemoDefaults(): FormState {
 
 // Every field in the backend's MandateCreate schema is required, so every
 // form field validates as required here. Order matters: it's the order
-// errors are reported and focused in, identity fields first — keep it in
-// sync with app/schemas.py.
+// errors are reported and focused in — keep it in sync with app/schemas.py.
+// (user_id/agent_id are also required by the schema but come from the
+// session identity, not the form.)
 const REQUIRED_FIELDS: [keyof FormState, string][] = [
-  ["user_id", "User ID"],
-  ["agent_id", "Agent ID"],
-  ["agent_display_name", "Agent display name"],
-  ["agent_platform", "Agent platform"],
   ["expires_at", "Expires at"],
   ["window_duration", "Window duration"],
   ["max_amount_per_txn", "Max amount per transaction"],
@@ -104,7 +97,11 @@ const invalidClass =
   "border-block-500 focus:border-block-500 focus:ring-block-500/30";
 const fieldWrapClass = "flex flex-col gap-1";
 
-export default function MandateForm({ onCreated }: MandateFormProps) {
+export default function MandateForm({
+  identity,
+  initialValues,
+  onCreated,
+}: MandateFormProps) {
   const [form, setForm] = useState<FormState>(initialState);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,10 +112,11 @@ export default function MandateForm({ onCreated }: MandateFormProps) {
 
   // Prefill after mount (not in the initial state) so the statically
   // prerendered HTML and the first client render match — the defaults are
-  // time- and UUID-dependent, which would otherwise cause a hydration
-  // mismatch under static export.
+  // time-dependent, which would otherwise cause a hydration mismatch
+  // under static export.
   useEffect(() => {
-    setForm(makeDemoDefaults());
+    setForm({ ...makeDemoDefaults(), ...initialValues });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function resetToDemoDefaults() {
@@ -176,10 +174,10 @@ export default function MandateForm({ onCreated }: MandateFormProps) {
 
     try {
       const mandate = await createMandate({
-        user_id: form.user_id,
-        agent_id: form.agent_id,
-        agent_display_name: form.agent_display_name,
-        agent_platform: form.agent_platform,
+        user_id: identity.userId,
+        agent_id: identity.agentId,
+        agent_display_name: identity.agentDisplayName,
+        agent_platform: identity.agentPlatform,
         expires_at: new Date(form.expires_at).toISOString(),
         max_amount_per_txn: Number(form.max_amount_per_txn),
         max_amount_per_window: Number(form.max_amount_per_window),
@@ -212,65 +210,13 @@ export default function MandateForm({ onCreated }: MandateFormProps) {
 
   return (
     <div className="flex flex-col gap-4">
+      <p className="text-xs font-sans text-ink-600 dark:text-ink-400">
+        Agent: {identity.agentDisplayName} · Session:{" "}
+        <span className="font-mono">{sessionShortId(identity)}</span>
+      </p>
+
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className={fieldWrapClass}>
-            <label className={labelClass} htmlFor="user_id">
-              User ID
-            </label>
-            <input
-              id="user_id"
-              className={cls("user_id", numericInputClass)}
-              value={form.user_id}
-              onChange={(e) => update("user_id", e.target.value)}
-              aria-required="true"
-              aria-invalid={Boolean(fieldErrors.user_id)}
-            />
-            {fieldError("user_id")}
-          </div>
-          <div className={fieldWrapClass}>
-            <label className={labelClass} htmlFor="agent_id">
-              Agent ID
-            </label>
-            <input
-              id="agent_id"
-              className={cls("agent_id", numericInputClass)}
-              value={form.agent_id}
-              onChange={(e) => update("agent_id", e.target.value)}
-              aria-required="true"
-              aria-invalid={Boolean(fieldErrors.agent_id)}
-            />
-            {fieldError("agent_id")}
-          </div>
-          <div className={fieldWrapClass}>
-            <label className={labelClass} htmlFor="agent_display_name">
-              Agent display name
-            </label>
-            <input
-              id="agent_display_name"
-              className={cls("agent_display_name", inputClass)}
-              value={form.agent_display_name}
-              onChange={(e) => update("agent_display_name", e.target.value)}
-              aria-required="true"
-              aria-invalid={Boolean(fieldErrors.agent_display_name)}
-            />
-            {fieldError("agent_display_name")}
-          </div>
-          <div className={fieldWrapClass}>
-            <label className={labelClass} htmlFor="agent_platform">
-              Agent platform
-            </label>
-            <input
-              id="agent_platform"
-              className={cls("agent_platform", inputClass)}
-              placeholder="chatgpt, claude, ..."
-              value={form.agent_platform}
-              onChange={(e) => update("agent_platform", e.target.value)}
-              aria-required="true"
-              aria-invalid={Boolean(fieldErrors.agent_platform)}
-            />
-            {fieldError("agent_platform")}
-          </div>
           <div className={fieldWrapClass}>
             <label className={labelClass} htmlFor="expires_at">
               Expires at
