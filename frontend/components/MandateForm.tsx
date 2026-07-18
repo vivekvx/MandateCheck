@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { createMandate, type Mandate } from "@/lib/api/mandates";
 
 interface MandateFormProps {
@@ -43,6 +43,37 @@ const initialState: FormState = {
   user_facing_summary: "",
 };
 
+// Demo-friendly defaults so the form is submittable with one click on stage.
+// Pure client-side prefill of form state — the payload sent to the backend is
+// still whatever the fields contain at submit time, and every field stays
+// editable. Computed per call so "Expires at" is always now+7d and the agent
+// gets a fresh UUID.
+function makeDemoDefaults(): FormState {
+  const expires = new Date(Date.now() + 7 * 24 * 3600 * 1000);
+  // datetime-local wants local "YYYY-MM-DDTHH:mm", no timezone suffix
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const expiresLocal = `${expires.getFullYear()}-${pad(expires.getMonth() + 1)}-${pad(
+    expires.getDate()
+  )}T${pad(expires.getHours())}:${pad(expires.getMinutes())}`;
+  return {
+    ...initialState,
+    user_id: "demo-user",
+    agent_id: crypto.randomUUID(),
+    agent_display_name: "Demo Agent",
+    agent_platform: "claude",
+    expires_at: expiresLocal,
+    window_duration: "24h",
+    max_amount_per_txn: "25",
+    max_amount_per_window: "100",
+    max_amount_total: "500",
+    merchant_allowlist: "amazon, flipkart, uber",
+    category_allowlist: "shopping, travel",
+    original_intent_text:
+      "Approved for routine household shopping and travel bookings under $25 per transaction.",
+    user_facing_summary: "Household shopping and travel, up to $25 per order.",
+  };
+}
+
 // Every field in the backend's MandateCreate schema is required, so every
 // form field validates as required here. Order matters: it's the order
 // errors are reported and focused in, identity fields first — keep it in
@@ -81,6 +112,21 @@ export default function MandateForm({ onCreated }: MandateFormProps) {
     Partial<Record<keyof FormState, string>>
   >({});
   const [created, setCreated] = useState<Mandate | null>(null);
+
+  // Prefill after mount (not in the initial state) so the statically
+  // prerendered HTML and the first client render match — the defaults are
+  // time- and UUID-dependent, which would otherwise cause a hydration
+  // mismatch under static export.
+  useEffect(() => {
+    setForm(makeDemoDefaults());
+  }, []);
+
+  function resetToDemoDefaults() {
+    setForm(makeDemoDefaults());
+    setFieldErrors({});
+    setError(null);
+    setCreated(null);
+  }
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -155,7 +201,7 @@ export default function MandateForm({ onCreated }: MandateFormProps) {
         user_facing_summary: form.user_facing_summary,
       });
       setCreated(mandate);
-      setForm(initialState);
+      setForm(makeDemoDefaults());
       onCreated?.(mandate);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create mandate.");
@@ -407,13 +453,22 @@ export default function MandateForm({ onCreated }: MandateFormProps) {
           </p>
         )}
 
-        <button
-          type="submit"
-          disabled={submitting}
-          className="self-start rounded-md bg-verdant-600 px-4 py-2 text-sm font-sans font-medium text-ink-50 hover:bg-verdant-700 disabled:opacity-50"
-        >
-          {submitting ? "Creating..." : "Create mandate"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="submit"
+            disabled={submitting}
+            className="rounded-md bg-verdant-600 px-4 py-2 text-sm font-sans font-medium text-ink-50 hover:bg-verdant-700 disabled:opacity-50"
+          >
+            {submitting ? "Creating..." : "Create mandate"}
+          </button>
+          <button
+            type="button"
+            onClick={resetToDemoDefaults}
+            className="rounded-md border border-border px-3 py-2 text-sm font-sans text-ink-700 dark:text-ink-300 hover:border-ink-400"
+          >
+            Reset to demo defaults
+          </button>
+        </div>
       </form>
 
       {created && (
