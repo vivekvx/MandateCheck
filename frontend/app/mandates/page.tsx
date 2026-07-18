@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import IntentComposer from "@/components/IntentComposer";
 import MandateForm, { type FormState } from "@/components/MandateForm";
 import MandateList from "@/components/MandateList";
 import TemplatePicker from "@/components/TemplatePicker";
@@ -75,14 +76,24 @@ export default function MandatesPage() {
             Preparing your session…
           </p>
         ) : view === "templates" ? (
-          <TemplatePicker
-            identity={identity}
-            onCreated={onCreated}
-            onCustomize={(values) => {
-              setCustomPrefill(values);
-              setView("custom");
-            }}
-          />
+          <div className="flex flex-col gap-4">
+            <IntentComposer
+              identity={identity}
+              onCreated={onCreated}
+              onCustomize={(values) => {
+                setCustomPrefill(values);
+                setView("custom");
+              }}
+            />
+            <TemplatePicker
+              identity={identity}
+              onCreated={onCreated}
+              onCustomize={(values) => {
+                setCustomPrefill(values);
+                setView("custom");
+              }}
+            />
+          </div>
         ) : (
           <MandateForm
             // Remount when the prefill changes so template values land in

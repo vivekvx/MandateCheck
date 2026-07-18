@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { createMandate, type Mandate } from "@/lib/api/mandates";
-import type { FormState } from "@/components/MandateForm";
+import {
+  createMandateFromValues,
+  type Mandate,
+  type MandateValues,
+} from "@/lib/api/mandates";
 import type { SessionIdentity } from "@/lib/identity";
 
 export interface MandateTemplate {
@@ -12,17 +15,7 @@ export interface MandateTemplate {
   // Short human line shown on the card, e.g. "₹1,000/txn · ₹3,000/week".
   caps: string;
   merchants: string;
-  values: Pick<
-    FormState,
-    | "max_amount_per_txn"
-    | "max_amount_per_window"
-    | "window_duration"
-    | "max_amount_total"
-    | "merchant_allowlist"
-    | "category_allowlist"
-    | "original_intent_text"
-    | "user_facing_summary"
-  >;
+  values: MandateValues;
 }
 
 export const MANDATE_TEMPLATES: MandateTemplate[] = [
@@ -105,29 +98,7 @@ export default function TemplatePicker({
     setCreating(true);
     setError(null);
     try {
-      const mandate = await createMandate({
-        user_id: identity.userId,
-        agent_id: identity.agentId,
-        agent_display_name: identity.agentDisplayName,
-        agent_platform: identity.agentPlatform,
-        // Sensible default, never user-entered: 7 days out.
-        expires_at: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
-        max_amount_per_txn: Number(template.values.max_amount_per_txn),
-        max_amount_per_window: Number(template.values.max_amount_per_window),
-        window_duration: template.values.window_duration,
-        max_amount_total: Number(template.values.max_amount_total),
-        merchant_allowlist: template.values.merchant_allowlist
-          .split(",")
-          .map((v) => v.trim())
-          .filter(Boolean),
-        category_allowlist: template.values.category_allowlist
-          .split(",")
-          .map((v) => v.trim())
-          .filter(Boolean),
-        allowed_time_window: { start_hour: 0, end_hour: 23 },
-        original_intent_text: template.values.original_intent_text,
-        user_facing_summary: template.values.user_facing_summary,
-      });
+      const mandate = await createMandateFromValues(identity, template.values);
       setCreated(mandate);
       setSelectedId(null);
       onCreated?.(mandate);

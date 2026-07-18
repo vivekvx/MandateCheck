@@ -48,3 +48,17 @@ class MandateListResponse(BaseModel):
     limit: int
     offset: int
     total: int
+
+
+class ParseIntentRequest(BaseModel):
+    text: str
+
+
+class ParseIntentResponse(BaseModel):
+    merchant_allowlist: list[str]
+    category_allowlist: list[str]
+    max_amount_per_txn: float
+    max_amount_per_window: float
+    window_duration: str
+    max_amount_total: float
+    user_facing_summary: str
