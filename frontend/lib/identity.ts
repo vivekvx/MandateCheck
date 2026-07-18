@@ -4,6 +4,8 @@
 // Single-user demo posture (see CLAUDE.md): this stands in for a real
 // auth session, it is not one.
 
+import { useSyncExternalStore } from "react";
+
 const STORAGE_KEY = "mandatecheck.identity.v1";
 
 export interface SessionIdentity {
@@ -22,20 +24,26 @@ function freshIdentity(): SessionIdentity {
   };
 }
 
-// Call from client code only (useEffect), never during render — the value
-// is per-browser, which would break static-export hydration.
+// Cached so repeated calls return the same object — required for
+// useSyncExternalStore's getSnapshot stability, and saves localStorage reads.
+let cachedIdentity: SessionIdentity | null = null;
+
+// Client-only (reads localStorage): call from event handlers/effects, or use
+// the useSessionIdentity() hook from components.
 export function getSessionIdentity(): SessionIdentity {
+  if (cachedIdentity) return cachedIdentity;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<SessionIdentity>;
       if (parsed.userId && parsed.agentId) {
-        return {
+        cachedIdentity = {
           userId: parsed.userId,
           agentId: parsed.agentId,
           agentDisplayName: parsed.agentDisplayName ?? "Demo Agent",
           agentPlatform: parsed.agentPlatform ?? "claude",
         };
+        return cachedIdentity;
       }
     }
   } catch {
@@ -47,7 +55,18 @@ export function getSessionIdentity(): SessionIdentity {
   } catch {
     // Ephemeral is fine — everything still works within this page load.
   }
+  cachedIdentity = identity;
   return identity;
+}
+
+// The identity never changes after first read, so the store never notifies.
+const noopSubscribe = () => () => {};
+const getServerSnapshot = () => null;
+
+// Hydration-safe identity for components: null during prerender/hydration,
+// the per-browser identity right after — no setState-in-effect involved.
+export function useSessionIdentity(): SessionIdentity | null {
+  return useSyncExternalStore(noopSubscribe, getSessionIdentity, getServerSnapshot);
 }
 
 export function sessionShortId(identity: SessionIdentity): string {

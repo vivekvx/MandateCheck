@@ -8,21 +8,24 @@ import {
 } from "@/lib/api/transactions";
 // No auth layer in this build (see CLAUDE.md scope) — scoped to the
 // per-browser session identity, same one the mandate form creates under.
-import { getSessionIdentity } from "@/lib/identity";
+import { useSessionIdentity } from "@/lib/identity";
 
 type RevokeState = "idle" | "confirming" | "revoking" | "done" | "error";
 
 export default function KillSwitch() {
+  const identity = useSessionIdentity();
   const [mandates, setMandates] = useState<MandateSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string>("");
   const [revokeState, setRevokeState] = useState<RevokeState>("idle");
   const [revokeError, setRevokeError] = useState<string | null>(null);
 
-  const loadMandates = () => {
-    setLoading(true);
-    fetchActiveMandates(getSessionIdentity().userId)
+  useEffect(() => {
+    if (!identity) return;
+    let cancelled = false;
+    fetchActiveMandates(identity.userId)
       .then((items) => {
+        if (cancelled) return;
         setMandates(items);
         setSelectedId((current) =>
           current && items.some((m) => m.mandate_id === current)
@@ -30,13 +33,16 @@ export default function KillSwitch() {
             : (items[0]?.mandate_id ?? "")
         );
       })
-      .catch(() => setMandates([]))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    loadMandates();
-  }, []);
+      .catch(() => {
+        if (!cancelled) setMandates([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [identity]);
 
   const handleConfirm = async () => {
     if (!selectedId) return;

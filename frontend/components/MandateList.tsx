@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import { ApiError } from "@/lib/api/client";
 import { listMandates, type Mandate, type MandateStatus } from "@/lib/api/mandates";
 
+// Pagination resets are handled by the parent remounting this component
+// (key on userId/refresh), so there's no state-syncing effect in here.
 interface MandateListProps {
   userId: string;
   pageSize?: number;
-  refreshKey?: number;
 }
 
 const statusStyles: Record<MandateStatus, string> = {
@@ -34,34 +35,26 @@ function StatusBadge({ status }: { status: MandateStatus }) {
 export default function MandateList({
   userId,
   pageSize = 10,
-  refreshKey,
 }: MandateListProps) {
   const [items, setItems] = useState<Mandate[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setOffset(0);
-  }, [userId, refreshKey]);
-
-  useEffect(() => {
-    if (!userId) {
-      setItems([]);
-      setTotal(0);
-      return;
-    }
+    // No user yet (identity still resolving): nothing to fetch, and the
+    // render below shows a prompt instead of stale rows.
+    if (!userId) return;
 
     let cancelled = false;
-    setLoading(true);
-    setError(null);
 
     listMandates(userId, pageSize, offset)
       .then((res) => {
         if (cancelled) return;
         setItems(res.items);
         setTotal(res.total);
+        setError(null);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -74,12 +67,12 @@ export default function MandateList({
     return () => {
       cancelled = true;
     };
-  }, [userId, pageSize, offset, refreshKey]);
+  }, [userId, pageSize, offset]);
 
   if (!userId) {
     return (
       <p className="text-sm font-sans text-ink-600 dark:text-ink-400">
-        Enter a user ID to see their mandates.
+        Preparing your session…
       </p>
     );
   }

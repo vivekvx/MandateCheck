@@ -1,21 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import IntentComposer from "@/components/IntentComposer";
 import MandateForm, { type FormState } from "@/components/MandateForm";
 import MandateList from "@/components/MandateList";
 import TemplatePicker from "@/components/TemplatePicker";
-import {
-  getSessionIdentity,
-  sessionShortId,
-  type SessionIdentity,
-} from "@/lib/identity";
+import { sessionShortId, useSessionIdentity } from "@/lib/identity";
 
 export default function MandatesPage() {
-  // Loaded after mount: identity is per-browser (localStorage), so reading
-  // it during render would break static-export hydration.
-  const [identity, setIdentity] = useState<SessionIdentity | null>(null);
+  // null during prerender/hydration, per-browser identity right after —
+  // useSyncExternalStore keeps this hydration-safe without effects.
+  const identity = useSessionIdentity();
   const [refreshKey, setRefreshKey] = useState(0);
   // Templates are the default view; the full form sits behind
   // "Custom mandate" (blank) or a card's "Customize" (prefilled).
@@ -23,10 +19,6 @@ export default function MandatesPage() {
   const [customPrefill, setCustomPrefill] = useState<
     Partial<FormState> | undefined
   >(undefined);
-
-  useEffect(() => {
-    setIdentity(getSessionIdentity());
-  }, []);
 
   const onCreated = () => setRefreshKey((k) => k + 1);
 
@@ -116,7 +108,12 @@ export default function MandatesPage() {
             <span className="font-mono">{sessionShortId(identity)}</span>
           </p>
         )}
-        <MandateList userId={identity?.userId ?? ""} refreshKey={refreshKey} />
+        <MandateList
+          // Remount on identity/refresh change: resets pagination without a
+          // state-syncing effect inside the list.
+          key={`${identity?.userId ?? "none"}:${refreshKey}`}
+          userId={identity?.userId ?? ""}
+        />
       </section>
     </div>
   );

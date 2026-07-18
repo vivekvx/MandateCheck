@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { createMandate, type Mandate } from "@/lib/api/mandates";
 import { sessionShortId, type SessionIdentity } from "@/lib/identity";
 
@@ -102,22 +102,19 @@ export default function MandateForm({
   initialValues,
   onCreated,
 }: MandateFormProps) {
-  const [form, setForm] = useState<FormState>(initialState);
+  // Lazy-initialized with the (time-dependent) demo defaults. Safe under
+  // static export: this component only mounts client-side, after the page's
+  // identity gate resolves — it never appears in prerendered HTML.
+  const [form, setForm] = useState<FormState>(() => ({
+    ...makeDemoDefaults(),
+    ...initialValues,
+  }));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<keyof FormState, string>>
   >({});
   const [created, setCreated] = useState<Mandate | null>(null);
-
-  // Prefill after mount (not in the initial state) so the statically
-  // prerendered HTML and the first client render match — the defaults are
-  // time-dependent, which would otherwise cause a hydration mismatch
-  // under static export.
-  useEffect(() => {
-    setForm({ ...makeDemoDefaults(), ...initialValues });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   function resetToDemoDefaults() {
     setForm(makeDemoDefaults());
