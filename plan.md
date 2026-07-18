@@ -9,8 +9,9 @@ Phase 5: polish + demo (final phase)
    scenarios live, transcript in backend/harness/demo-run-output.md
 6. [x] Impeccable design QA pass — 9 issues found and fixed, verified
    clean build
-7. [ ] Demo recording: scenario 2 (injection blocked) + scenario 7
-   (kill switch), using real harness output where possible
+7. [x] Demo recording — done 2026-07-18 against the live deployment:
+   docs/demo-recording.gif (mandate created via UI, blocked + allowed
+   transactions rendering in the live feed in real time)
 
 ## Decisions already made — do not revisit without explicit discussion
 - Name: MandateCheck

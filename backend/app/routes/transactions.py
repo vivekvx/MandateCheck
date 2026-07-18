@@ -7,6 +7,7 @@ dataclasses and feeds DB-derived context into the deterministic check.
 
 import json
 import logging
+import os
 import uuid
 from datetime import datetime, time, timedelta
 
@@ -187,7 +188,10 @@ def _build_context(
 
 
 @router.post("/evaluate_transaction", response_model=TransactionDecisionOut)
-@limiter.limit("20/minute")
+# Default 20/minute; RATE_LIMIT_EVALUATE exists so a busy demo (shared venue
+# Wi-Fi behind one NAT IP) can be bumped from the deploy env without a code
+# change — e.g. "100/minute" for event day, then removed.
+@limiter.limit(os.environ.get("RATE_LIMIT_EVALUATE", "20/minute"))
 async def evaluate_transaction(
     request: Request, body: TransactionRequestIn, db: Session = Depends(get_db)
 ) -> TransactionDecisionOut:
