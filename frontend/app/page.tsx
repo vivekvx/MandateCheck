@@ -138,7 +138,7 @@ function AsciiBackdrop({ reduceMotion }: { reduceMotion: boolean }) {
       className="hero-vignette pointer-events-none absolute inset-0 z-[1] flex items-center justify-center overflow-hidden"
     >
       <pre
-        className={`select-none whitespace-pre text-center font-mono text-ink-500 opacity-[0.13] dark:text-verdant-400 ${
+        className={`select-none whitespace-pre text-center font-mono text-ink-500 opacity-[0.32] dark:text-verdant-400 ${
           reduceMotion ? "" : "ascii-shimmer"
         }`}
         style={{
