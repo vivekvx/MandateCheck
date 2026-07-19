@@ -8,6 +8,7 @@ import {
   useReducedMotion,
   type Variants,
 } from "framer-motion";
+import { ASCII_ART } from "@/lib/asciiArt";
 
 /*
   Home hero: the hero is itself a live-demo teaser.
@@ -118,6 +119,40 @@ function TokenCanvas() {
   );
 }
 
+// Renders as one pre-formatted text node (no per-character DOM). Entrance
+// fade (framer, wrapper opacity 0->1) and the idle shimmer (CSS keyframe,
+// inner pre's own low resting opacity) are split across two elements so
+// they don't fight over the same animated property. font-size scales with
+// viewport width so the fixed-width art fits without horizontal scroll.
+function AsciiBackdrop({ reduceMotion }: { reduceMotion: boolean }) {
+  return (
+    <motion.div
+      aria-hidden
+      initial={{ opacity: 0 }}
+      animate={{
+        opacity: 1,
+        transition: reduceMotion
+          ? { duration: 0 }
+          : { duration: 1.1, ease: EASE_OUT, delay: 0.15 },
+      }}
+      className="hero-vignette pointer-events-none absolute inset-0 z-[1] flex items-center justify-center overflow-hidden"
+    >
+      <pre
+        className={`select-none whitespace-pre text-center font-mono text-ink-500 opacity-[0.13] dark:text-verdant-400 ${
+          reduceMotion ? "" : "ascii-shimmer"
+        }`}
+        style={{
+          fontSize: "clamp(2px, 0.8vw, 6.5px)",
+          lineHeight: 1.15,
+          letterSpacing: "-0.02em",
+        }}
+      >
+        {ASCII_ART}
+      </pre>
+    </motion.div>
+  );
+}
+
 const heroStagger: Variants = {
   hidden: {},
   show: {
@@ -171,12 +206,13 @@ export default function Home() {
   return (
     <main className="relative flex flex-1 flex-col overflow-hidden">
       <TokenCanvas />
+      <AsciiBackdrop reduceMotion={!!reduceMotion} />
 
       <motion.section
         variants={heroStagger}
         initial="hidden"
         animate="show"
-        className="relative mx-auto flex w-full max-w-4xl flex-1 flex-col items-center justify-center px-6 py-16"
+        className="relative z-10 mx-auto flex w-full max-w-4xl flex-1 flex-col items-center justify-center px-6 py-16"
       >
         <motion.p
           variants={heroItem}

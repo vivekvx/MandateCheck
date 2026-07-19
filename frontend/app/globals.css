@@ -163,3 +163,24 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .hero-pulse { animation: none; }
 }
+
+/* ASCII art hero backdrop: restrained opacity breathing, not a flicker. */
+@keyframes ascii-shimmer {
+  0%, 100% { opacity: 0.10; }
+  50% { opacity: 0.16; }
+}
+
+.ascii-shimmer {
+  animation: ascii-shimmer 7s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ascii-shimmer { animation: none; }
+}
+
+/* Fades the ASCII backdrop back to the page surface color near the center
+   so foreground hero text/button stay legible without hiding the art at
+   the edges. Uses the theme's own surface color, so it self-adapts. */
+.hero-vignette {
+  background: radial-gradient(ellipse 62% 55% at 50% 42%, var(--color-surface) 0%, transparent 72%);
+}
