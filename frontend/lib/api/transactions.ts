@@ -17,6 +17,8 @@ export interface TransactionBroadcast {
   flagged: boolean;
   flag_reason: string | null;
   timestamp: string;
+  merchant_id: string;
+  proposed_amount: number;
 }
 
 export type FeedConnectionStatus = "connecting" | "open" | "closed";

@@ -118,22 +118,31 @@ export interface ParsedIntent {
 // LLM-backed field proposal only — the result is shown to the user and
 // nothing is created until they confirm (which goes through createMandate).
 // The decision path (/evaluate_transaction) never sees this.
-export function parseIntent(text: string): Promise<ParsedIntent> {
-  return apiFetch<ParsedIntent>("/mandates/parse_intent", {
-    method: "POST",
-    body: JSON.stringify({ text }),
-  });
+export function parseIntent(
+  text: string,
+  onRetry?: () => void,
+): Promise<ParsedIntent> {
+  return apiFetch<ParsedIntent>(
+    "/mandates/parse_intent",
+    { method: "POST", body: JSON.stringify({ text }) },
+    onRetry,
+  );
 }
 
 export function listMandates(
   userId: string,
   limit = 20,
   offset = 0,
+  onRetry?: () => void,
 ): Promise<MandateListResponse> {
   const params = new URLSearchParams({
     user_id: userId,
     limit: String(limit),
     offset: String(offset),
   });
-  return apiFetch<MandateListResponse>(`/mandates?${params.toString()}`);
+  return apiFetch<MandateListResponse>(
+    `/mandates?${params.toString()}`,
+    {},
+    onRetry,
+  );
 }

@@ -46,10 +46,7 @@ function extractMessage(status: number, body: unknown): string {
   return `Request failed with status ${status}`;
 }
 
-export async function apiFetch<T>(
-  path: string,
-  options: RequestInit = {},
-): Promise<T> {
+async function doFetch<T>(path: string, options: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers: {
@@ -73,6 +70,26 @@ export async function apiFetch<T>(
   }
 
   return (await res.json()) as T;
+}
+
+// Render's free tier sleeps the backend after ~15min idle; the first request
+// against it fails at the network layer (fetch throws, not an ApiError)
+// while it wakes, typically 30-60s. Retry once after a wait instead of
+// surfacing a bare "failed to fetch" on what is usually a transient cold
+// start. onRetry lets callers show a "waking up" message during the wait.
+export async function apiFetch<T>(
+  path: string,
+  options: RequestInit = {},
+  onRetry?: () => void,
+): Promise<T> {
+  try {
+    return await doFetch<T>(path, options);
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    onRetry?.();
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+    return doFetch<T>(path, options);
+  }
 }
 
 export { API_BASE_URL };

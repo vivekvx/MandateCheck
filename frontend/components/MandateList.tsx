@@ -40,6 +40,7 @@ export default function MandateList({
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [waking, setWaking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -48,8 +49,11 @@ export default function MandateList({
     if (!userId) return;
 
     let cancelled = false;
+    setWaking(false);
 
-    listMandates(userId, pageSize, offset)
+    listMandates(userId, pageSize, offset, () => {
+      if (!cancelled) setWaking(true);
+    })
       .then((res) => {
         if (cancelled) return;
         setItems(res.items);
@@ -61,7 +65,10 @@ export default function MandateList({
         setError(err instanceof ApiError ? err.message : "Failed to load mandates.");
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setWaking(false);
+        }
       });
 
     return () => {
@@ -84,7 +91,9 @@ export default function MandateList({
     <div className="flex flex-col gap-3">
       {loading && (
         <p className="text-sm font-sans text-ink-600 dark:text-ink-400">
-          Loading mandates...
+          {waking
+            ? "Waking up the backend, this can take up to a minute — retrying…"
+            : "Loading mandates..."}
         </p>
       )}
 

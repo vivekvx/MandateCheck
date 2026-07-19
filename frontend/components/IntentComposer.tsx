@@ -33,6 +33,7 @@ export default function IntentComposer({
 }: IntentComposerProps) {
   const [text, setText] = useState("");
   const [parsing, setParsing] = useState(false);
+  const [waking, setWaking] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [proposal, setProposal] = useState<MandateValues | null>(null);
@@ -43,10 +44,11 @@ export default function IntentComposer({
     const trimmed = text.trim();
     if (!trimmed || parsing) return;
     setParsing(true);
+    setWaking(false);
     setError(null);
     setProposal(null);
     try {
-      const parsed = await parseIntent(trimmed);
+      const parsed = await parseIntent(trimmed, () => setWaking(true));
       setProposal({
         merchant_allowlist: parsed.merchant_allowlist.join(", "),
         category_allowlist: parsed.category_allowlist.join(", "),
@@ -69,6 +71,7 @@ export default function IntentComposer({
       );
     } finally {
       setParsing(false);
+      setWaking(false);
     }
   }
 
@@ -106,9 +109,15 @@ export default function IntentComposer({
           disabled={parsing || !text.trim()}
           className="shrink-0 rounded-md border border-border px-3 py-2 text-sm font-sans text-ink-700 dark:text-ink-300 hover:border-ink-400 disabled:opacity-50"
         >
-          {parsing ? "Parsing..." : "Parse"}
+          {waking ? "Waking backend…" : parsing ? "Parsing..." : "Parse"}
         </button>
       </form>
+
+      {waking && (
+        <p className="text-sm font-sans text-ink-600 dark:text-ink-400">
+          Waking up the backend, this can take up to a minute — retrying…
+        </p>
+      )}
 
       {proposal && (
         <div className="flex flex-col gap-3 rounded-lg border border-verdant-500 bg-surface-raised p-4">

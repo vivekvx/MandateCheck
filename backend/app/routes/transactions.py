@@ -258,6 +258,8 @@ async def evaluate_transaction(
             "flagged": decision.flagged,
             "flag_reason": decision.flag_reason,
             "timestamp": body.timestamp.isoformat(),
+            "merchant_id": body.merchant_id,
+            "proposed_amount": body.proposed_amount,
         }
     )
 
