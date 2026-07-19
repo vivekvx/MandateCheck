@@ -166,8 +166,8 @@ body {
 
 /* ASCII art hero backdrop: restrained opacity breathing, not a flicker. */
 @keyframes ascii-shimmer {
-  0%, 100% { opacity: 0.26; }
-  50% { opacity: 0.38; }
+  0%, 100% { opacity: 0.48; }
+  50% { opacity: 0.62; }
 }
 
 .ascii-shimmer {
