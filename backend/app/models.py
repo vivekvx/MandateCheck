@@ -2,6 +2,7 @@ import uuid
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     DateTime,
     ForeignKey,
     Numeric,
@@ -61,6 +62,34 @@ class TransactionLog(Base):
     agent_reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
     decision: Mapped[str] = mapped_column(String, nullable=False)
     reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    flagged: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    flag_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    # ALLOWED_AND_SENT | BLOCKED | RAZORPAY_ERROR — distinct from `decision`
+    # (the rules-engine allow/block verdict, unchanged by this column).
+    # Nullable: pre-existing rows predate the Razorpay integration.
+    razorpay_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    razorpay_order_id: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped["DateTime"] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class Claim(Base):
+    __tablename__ = "claims"
+
+    claim_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    transaction_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("transaction_logs.transaction_id"),
+        index=True,
+        nullable=False,
+    )
+    claim_reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped["DateTime"] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    recommendation: Mapped[str | None] = mapped_column(String, nullable=True)
+    recommendation_basis: Mapped[str | None] = mapped_column(Text, nullable=True)

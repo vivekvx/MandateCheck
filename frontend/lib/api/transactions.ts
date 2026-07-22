@@ -9,6 +9,8 @@ const WS_BASE_URL =
   process.env.NEXT_PUBLIC_WS_BASE_URL ??
   API_BASE_URL.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
 
+export type RazorpayStatus = "ALLOWED_AND_SENT" | "BLOCKED" | "RAZORPAY_ERROR";
+
 export interface TransactionBroadcast {
   mandate_id: string;
   transaction_id: string;
@@ -19,6 +21,8 @@ export interface TransactionBroadcast {
   timestamp: string;
   merchant_id: string;
   proposed_amount: number;
+  razorpay_status: RazorpayStatus;
+  razorpay_order_id: string | null;
 }
 
 export type FeedConnectionStatus = "connecting" | "open" | "closed";

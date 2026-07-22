@@ -21,7 +21,7 @@ Three services, wired by Docker Compose locally and split across Render + Cloudf
 
 | Service | What it does |
 |---|---|
-| **Backend** — FastAPI + Postgres | `POST /evaluate_transaction` gates every payment attempt; mandate CRUD + revoke; append-only transaction log; WebSocket broadcast of every decision. Fails closed: an internal error mid-evaluation returns a 503 rejection, never an accidental allow. |
+| **Backend** — FastAPI + Postgres | `POST /evaluate_transaction` gates every payment attempt; mandate CRUD + revoke; append-only transaction log; WebSocket broadcast of every decision. Fails closed: an internal error mid-evaluation returns a 503 rejection, never an accidental allow. On ALLOW, forwards to Razorpay's **test-mode** Orders API (`backend/app/razorpay_client.py`, isolated from the rules engine) and stores a distinct `razorpay_status`: `ALLOWED_AND_SENT` / `BLOCKED` / `RAZORPAY_ERROR`. |
 | **Frontend** — Next.js dashboard | Mandate creation form, live decision feed over WebSocket, and a kill switch that revokes an agent's access instantly. |
 | **Harness** — LiteLLM → Groq | A real LLM agent given deliberately hostile inputs (prompt injection, lookalike merchants). Exists to attack the gate, not to power it. |
 
@@ -40,9 +40,10 @@ Full transcripts, reproducible: [`backend/harness/demo-run-output.md`](backend/h
 ## Tech stack
 
 - **Gate:** FastAPI, PostgreSQL, SQLAlchemy, Alembic, slowapi (rate limiting)
+- **Payment rail:** Razorpay test-mode Orders API (httpx) — called only after an ALLOW, never inside the rules engine
 - **Dashboard:** Next.js (static export), React, Tailwind
 - **Adversary:** LiteLLM → Groq (harness only — see invariant above)
-- **Tests:** pytest — 8 rules-engine scenarios + a fail-closed regression
+- **Tests:** pytest — 8 rules-engine scenarios, a fail-closed regression, adjudication triage, and Razorpay success/error/timeout mapping
 - **Dev/deploy:** Docker Compose · Render (backend + Postgres) · Cloudflare Pages (frontend)
 
 ## Run locally
@@ -51,6 +52,7 @@ Requires Docker + Docker Compose.
 
 ```
 cp .env.example .env   # defaults work as-is; set GROQ_API_KEY to run the harness
+                        # set RAZORPAY_TEST_KEY_ID / RAZORPAY_TEST_KEY_SECRET (test-mode) to see orders actually created on ALLOW
 docker compose up --build
 ```
 
@@ -72,7 +74,7 @@ To run the adversarial harness against your local stack: set `GROQ_API_KEY`, the
 
 Deliberate scope decisions, stated up front:
 
-- **Simulated payment rail.** No real bank/UPI integration — the gate's contract is the interesting part; the rail behind it is swappable.
+- **Test-mode payment rail.** No real bank/UPI integration or live money movement — an ALLOW creates a real order on Razorpay's *test-mode* API (sandbox keys, no live path exists in this codebase). The gate's contract is the interesting part; the rail behind it is swappable.
 - **No auth.** Single demo user, kill switch scoped by an env var. A real multi-user boundary is an integration concern, not a rules-engine one.
 - **Soft override language flags, doesn't block.** Phrases like "this is authorized" alone can't be deterministically proven hostile — so they flag for review rather than block. Hard injection patterns combined with intent mismatch do block. This tradeoff is documented in the engine itself.
 - **In-memory WebSocket manager.** One process, no Redis/pub-sub — by design at this scale. Fanning out across instances is a different piece of infrastructure and is deliberately not half-built here.

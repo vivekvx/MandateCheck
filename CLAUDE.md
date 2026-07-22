@@ -17,7 +17,9 @@ If you think a case needs an LLM to judge, stop and flag it — don't add one.
 - Tests: pytest
 
 ## Explicitly out of scope — do not build these even if it seems helpful
-- No real bank/UPI integration — simulated payment rail only
+- No real bank/UPI integration — simulated payment rail only. Exception (approved 2026-07-22): 
+  Razorpay **test-mode** Orders API may be called, sandbox keys only, strictly after an ALLOW 
+  decision, isolated in `razorpay_client.py`. Never live keys, never inside rules_engine.py.
 - No message queue, Kafka, Redis Streams, or job orchestration
 - No multi-agent orchestration
 - No blue-green deploys, secret rotation automation, or infra beyond 

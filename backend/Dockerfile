@@ -9,7 +9,8 @@ RUN pip install --no-cache-dir \
     alembic==1.18.5 \
     psycopg2-binary==2.9.12 \
     pydantic==2.13.4 \
-    slowapi==0.1.10
+    slowapi==0.1.10 \
+    httpx==0.28.1
 
 COPY . .
 

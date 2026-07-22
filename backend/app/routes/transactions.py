@@ -25,7 +25,7 @@ from slowapi.util import get_remote_address
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app import domain, rules_engine
+from app import domain, razorpay_client, rules_engine
 from app.db import get_db
 from app.models import Mandate, TransactionLog
 
@@ -97,6 +97,8 @@ class TransactionDecisionOut(BaseModel):
     reason: str
     flagged: bool
     flag_reason: str | None
+    razorpay_status: str
+    razorpay_order_id: str | None
 
 
 def _parse_window_duration_seconds(window_duration: str) -> float:
@@ -212,6 +214,37 @@ async def evaluate_transaction(
         decision = rules_engine.evaluate(domain_txn, domain_mandate, context)
         outcome = decision.outcome.lower()
 
+        # Razorpay is called strictly after the rules-engine verdict, and
+        # strictly only on "allow" — a blocked transaction must never reach
+        # this call. A Razorpay-side failure (timeout/4xx/5xx) is its own
+        # distinct state, not a MandateCheck block: the decision stays
+        # "allow", only razorpay_status reflects the delivery failure.
+        razorpay_order_id: str | None = None
+        if outcome == "block":
+            razorpay_status = "BLOCKED"
+        else:
+            try:
+                order = await razorpay_client.create_order(
+                    amount_rupees=body.proposed_amount,
+                    currency="INR",
+                    receipt=str(body.transaction_id),
+                )
+                razorpay_order_id = order.get("id")
+                razorpay_status = "ALLOWED_AND_SENT"
+            except razorpay_client.RazorpayError:
+                logger.exception(
+                    json.dumps(
+                        {
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "request_id": request_id,
+                            "mandate_id": str(body.mandate_id),
+                            "transaction_id": str(body.transaction_id),
+                            "event": "razorpay_order_creation_failed",
+                        }
+                    )
+                )
+                razorpay_status = "RAZORPAY_ERROR"
+
         # transaction_id is the client-generated PK; a replay reuses the same
         # id, so there's nothing new to persist — the original row already
         # holds the first decision.
@@ -227,6 +260,10 @@ async def evaluate_transaction(
                 agent_reasoning=body.agent_reasoning,
                 decision=outcome,
                 reason=decision.reason,
+                flagged=decision.flagged,
+                flag_reason=decision.flag_reason,
+                razorpay_status=razorpay_status,
+                razorpay_order_id=razorpay_order_id,
             )
             db.add(log_row)
             db.commit()
@@ -260,6 +297,8 @@ async def evaluate_transaction(
             "timestamp": body.timestamp.isoformat(),
             "merchant_id": body.merchant_id,
             "proposed_amount": body.proposed_amount,
+            "razorpay_status": razorpay_status,
+            "razorpay_order_id": razorpay_order_id,
         }
     )
 
@@ -281,4 +320,6 @@ async def evaluate_transaction(
         reason=decision.reason,
         flagged=decision.flagged,
         flag_reason=decision.flag_reason,
+        razorpay_status=razorpay_status,
+        razorpay_order_id=razorpay_order_id,
     )

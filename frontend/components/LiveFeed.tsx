@@ -57,6 +57,33 @@ function DecisionBadge({ tone }: { tone: Tone }) {
   );
 }
 
+// Razorpay delivery status is a second axis, distinct from the allow/block
+// verdict above: a rules-engine ALLOW can still fail to reach Razorpay
+// (timeout/4xx/5xx), and that must never read as a MandateCheck block.
+function RazorpayBadge({
+  status,
+  orderId,
+}: {
+  status: TransactionBroadcast["razorpay_status"];
+  orderId: string | null;
+}) {
+  if (status === "ALLOWED_AND_SENT") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-sm border border-verdant-400/60 bg-transparent px-2 py-0.5 text-xs font-mono text-verdant-700 dark:text-verdant-400">
+        → Razorpay: sent{orderId ? ` (${orderId})` : ""}
+      </span>
+    );
+  }
+  if (status === "RAZORPAY_ERROR") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-sm border border-amber-500/60 bg-transparent px-2 py-0.5 text-xs font-mono text-amber-600 dark:text-amber-400">
+        → Razorpay: delivery failed
+      </span>
+    );
+  }
+  return null; // BLOCKED: the BLOCK badge already says everything needed
+}
+
 function EmptyState() {
   return (
     <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
@@ -127,8 +154,12 @@ export default function LiveFeed() {
                   className={`flex flex-col gap-1.5 border-l-4 px-4 py-3 ${TONE_BORDER[tone]}`}
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <DecisionBadge tone={tone} />
+                      <RazorpayBadge
+                        status={entry.razorpay_status}
+                        orderId={entry.razorpay_order_id}
+                      />
                       <span className="font-mono text-sm font-medium text-text-primary">
                         {entry.merchant_id ?? "unknown merchant"}
                       </span>
