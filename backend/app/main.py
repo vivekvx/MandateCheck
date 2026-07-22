@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 
-from app.routes import health, mandates, transactions
+from app.routes import claims, health, mandates, transactions
 
 app = FastAPI()
 
@@ -22,3 +22,4 @@ app.add_middleware(
 app.include_router(mandates.router)
 app.include_router(health.router)
 app.include_router(transactions.router)
+app.include_router(claims.router)

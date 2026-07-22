@@ -33,3 +33,21 @@ class TransactionRequest:
     timestamp: datetime
     source_content: str
     agent_reasoning: str
+
+
+@dataclass
+class Claim:
+    claim_id: str
+    transaction_id: str
+    claim_reason: str
+    created_at: datetime
+    status: str  # "pending" | "auto_approved" | "auto_denied" | "escalated"
+    recommendation: str | None = None
+    recommendation_basis: str | None = None
+
+
+@dataclass
+class AdjudicationResult:
+    status: str  # "auto_approved" | "auto_denied" | "escalated"
+    recommendation: str
+    recommendation_basis: str

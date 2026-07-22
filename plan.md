@@ -25,6 +25,33 @@ Phase 5: polish + demo (final phase)
 - Hash-chained audit log for tamper-evidence
 - Multi-platform mandate aggregation (ChatGPT + Claude + Gullak in one view)
 
+## New item (not one of the original 5 phases) — post-hoc claim adjudication
+Deliberately scoped work beyond the original build, not a pivot on scope.
+Added 2026-07-21.
+
+- Purpose: after a transaction has already executed, a person/agent can file
+  a claim disputing it; this layer triages the claim into
+  auto_approved / auto_denied / escalated.
+- The rule that must never be broken here, same weight as "no LLM in the
+  rules engine": this layer NEVER executes a reversal or moves money. It
+  only ever outputs a recommendation object, clearly labeled as a
+  recommendation. Real fund reversal goes through bank/network dispute
+  infrastructure this project has no access to and must not pretend to have.
+- Deterministic triage only (adjudicate() in adjudication.py) — no LLM in
+  steps that decide auto_approved/auto_denied/escalated. A case needing
+  model judgment to pick a category belongs in escalated, full stop.
+- Optional, bounded: for escalated claims only, an LLM may generate a
+  plain-language mismatch SUMMARY for a human reviewer — never an
+  approve/deny recommendation, and its output field is named distinctly so
+  it can't be confused with the deterministic recommendation.
+- Files owned by this item: backend/app/domain.py (new dataclasses only),
+  backend/app/adjudication.py (new), backend/app/models.py (new Claim table
+  only), backend/app/routes/claims.py (new), backend/alembic/ (new
+  migration, Claim table only), backend/tests/test_adjudication.py (new).
+  Does not touch rules_engine.py, existing domain.py dataclasses, Mandate
+  or TransactionLog tables.
+- No frontend, no auth, no webhook notifications for this item yet.
+
 ## Open questions — flag, don't silently decide
 - Frontend host port is 7009, not 3000/4000 (both collided locally) —
   confirmed in docker-compose.yml and README, NEXT_PUBLIC_API_BASE_URL

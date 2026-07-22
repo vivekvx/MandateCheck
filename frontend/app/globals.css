@@ -164,23 +164,25 @@ body {
   .hero-pulse { animation: none; }
 }
 
-/* ASCII art hero backdrop: restrained opacity breathing, not a flicker. */
-@keyframes ascii-shimmer {
-  0%, 100% { opacity: 0.48; }
-  50% { opacity: 0.62; }
+/* Gate backdrop scan: a slow, quiet sweep through the checkpoint aperture —
+   implies continuous inspection, not a strobe. Same easing family as the
+   rest of the hero (ease-in-out, several-second period). */
+@keyframes gate-scan {
+  0%, 100% { top: 14%; }
+  50% { top: 78%; }
 }
 
-.ascii-shimmer {
-  animation: ascii-shimmer 7s ease-in-out infinite;
+.gate-scan {
+  animation: gate-scan 9s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ascii-shimmer { animation: none; }
+  .gate-scan { animation: none; top: 46%; }
 }
 
-/* Fades the ASCII backdrop back to the page surface color near the center
-   so foreground hero text/button stay legible without hiding the art at
-   the edges. Uses the theme's own surface color, so it self-adapts. */
+/* Fades the gate backdrop back to the page surface color near the center
+   so foreground hero text/button stay legible without hiding the structure
+   at the edges. Uses the theme's own surface color, so it self-adapts. */
 .hero-vignette {
-  background: radial-gradient(ellipse 62% 55% at 50% 42%, var(--color-surface) 0%, transparent 72%);
+  background: radial-gradient(ellipse 55% 60% at 50% 50%, var(--color-surface) 0%, transparent 72%);
 }

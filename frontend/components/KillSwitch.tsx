@@ -74,8 +74,13 @@ export default function KillSwitch() {
       }
       setRevokedAgentName(target?.agent_display_name ?? "");
       setRevokeState("done");
-      setMandates((prev) => prev.filter((m) => m.mandate_id !== selectedId));
-      setSelectedId((prev) => (prev === selectedId ? "" : prev));
+      setMandates((prev) => {
+        const remaining = prev.filter((m) => m.mandate_id !== selectedId);
+        setSelectedId((current) =>
+          current === selectedId ? (remaining[0]?.mandate_id ?? "") : current
+        );
+        return remaining;
+      });
     } catch (err) {
       setRevokeError(err instanceof Error ? err.message : "Revoke failed — try again.");
       setRevokeState("error");
