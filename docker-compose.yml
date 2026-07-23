@@ -24,6 +24,8 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://mandatecheck:mandatecheck@postgres:5432/mandatecheck}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:7009}
+      RAZORPAY_TEST_KEY_ID: ${RAZORPAY_TEST_KEY_ID:-}
+      RAZORPAY_TEST_KEY_SECRET: ${RAZORPAY_TEST_KEY_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,14 +39,30 @@ services:
   frontend:
     build:
       context: ./frontend
-      args:
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
-        NEXT_PUBLIC_DEMO_USER_ID: ${NEXT_PUBLIC_DEMO_USER_ID:-demo-user}
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+      NEXT_PUBLIC_DEMO_USER_ID: ${NEXT_PUBLIC_DEMO_USER_ID:-demo-user}
+      # Docker Desktop's bind-mount filesystem doesn't always deliver
+      # inotify events for host-side edits; polling is the standard fix.
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
     ports:
       - "7009:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      # node:20-slim has neither curl nor wget; Node's own http module
+      # covers the same check without adding a package.
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/feed', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
 volumes:
   postgres_data:

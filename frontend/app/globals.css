@@ -44,6 +44,13 @@
   --color-flag-500: #bc8f2f;
   --color-flag-100: #f5ead2;
 
+  /* Delivery/system state (e.g. Razorpay relay failure) - a steel-blue,
+     deliberately not in the block/flag warm-to-red family: this means
+     "the rail didn't respond", not "the rules engine made a judgment call". */
+  --color-relay-600: #2d5f7f;
+  --color-relay-500: #3c7ba0;
+  --color-relay-100: #dceaf2;
+
   /* Surface + text (light mode default) */
   --color-surface: var(--color-ink-50);
   --color-surface-raised: #ffffff;
@@ -122,6 +129,10 @@
   --color-flag-600: var(--color-flag-600);
   --color-flag-500: var(--color-flag-500);
   --color-flag-100: var(--color-flag-100);
+
+  --color-relay-600: var(--color-relay-600);
+  --color-relay-500: var(--color-relay-500);
+  --color-relay-100: var(--color-relay-100);
 
   --color-surface: var(--color-surface);
   --color-surface-raised: var(--color-surface-raised);
