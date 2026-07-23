@@ -15,17 +15,18 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
+    Query,
     Request,
     WebSocket,
     WebSocketDisconnect,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app import domain, razorpay_client, rules_engine
+from app import advisory, ambiguity, domain, razorpay_client, rules_engine
 from app.db import get_db
 from app.models import Mandate, TransactionLog
 
@@ -89,6 +90,10 @@ class TransactionRequestIn(BaseModel):
     timestamp: datetime
     source_content: str
     agent_reasoning: str
+    # "manual" | "demo" | "agent" — who/what initiated this request. Never
+    # read by rules_engine.py or the Razorpay call; purely a DB tag so
+    # scripted/agent-driven traffic is identifiable after the fact.
+    source: str = "manual"
 
 
 class TransactionDecisionOut(BaseModel):
@@ -99,6 +104,45 @@ class TransactionDecisionOut(BaseModel):
     flag_reason: str | None
     razorpay_status: str
     razorpay_order_id: str | None
+
+
+class TransactionHistoryItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    mandate_id: uuid.UUID
+    transaction_id: uuid.UUID
+    decision: str
+    reason: str | None
+    flagged: bool
+    flag_reason: str | None
+    timestamp: datetime
+    merchant_id: str
+    proposed_amount: float
+    razorpay_status: str | None
+    razorpay_order_id: str | None
+    source: str
+    llm_review_flagged: bool
+    llm_advisory_note: str | None
+
+
+class TransactionHistoryOut(BaseModel):
+    items: list[TransactionHistoryItem]
+
+
+@router.get("/transactions", response_model=TransactionHistoryOut)
+def list_transactions(
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+) -> TransactionHistoryOut:
+    rows = (
+        db.query(TransactionLog)
+        .order_by(TransactionLog.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+    return TransactionHistoryOut(
+        items=[TransactionHistoryItem.model_validate(row) for row in rows]
+    )
 
 
 def _parse_window_duration_seconds(window_duration: str) -> float:
@@ -189,14 +233,12 @@ def _build_context(
     return context, already_logged
 
 
-@router.post("/evaluate_transaction", response_model=TransactionDecisionOut)
-# Default 20/minute; RATE_LIMIT_EVALUATE exists so a busy demo (shared venue
-# Wi-Fi behind one NAT IP) can be bumped from the deploy env without a code
-# change — e.g. "100/minute" for event day, then removed.
-@limiter.limit(os.environ.get("RATE_LIMIT_EVALUATE", "20/minute"))
-async def evaluate_transaction(
-    request: Request, body: TransactionRequestIn, db: Session = Depends(get_db)
+async def _evaluate_and_persist(
+    body: TransactionRequestIn, db: Session
 ) -> TransactionDecisionOut:
+    """The actual decision pipeline: rules engine -> (maybe) Razorpay -> log
+    -> broadcast. Shared by /evaluate_transaction and /demo/run so a demo
+    run exercises exactly this code, not a parallel copy of it."""
     request_id = str(uuid.uuid4())
 
     # Fail closed: any unhandled error between here and the commit must
@@ -213,6 +255,13 @@ async def evaluate_transaction(
 
         decision = rules_engine.evaluate(domain_txn, domain_mandate, context)
         outcome = decision.outcome.lower()
+
+        # Pure, deterministic classification — no I/O, cannot change
+        # `decision` above. Only decides whether an advisory LLM call
+        # happens AFTER this BLOCK is committed, further down.
+        ambiguity_result = ambiguity.is_ambiguous_block(
+            decision, domain_txn, domain_mandate, context
+        )
 
         # Razorpay is called strictly after the rules-engine verdict, and
         # strictly only on "allow" — a blocked transaction must never reach
@@ -264,6 +313,8 @@ async def evaluate_transaction(
                 flag_reason=decision.flag_reason,
                 razorpay_status=razorpay_status,
                 razorpay_order_id=razorpay_order_id,
+                source=body.source,
+                llm_review_flagged=ambiguity_result.is_ambiguous,
             )
             db.add(log_row)
             db.commit()
@@ -288,6 +339,7 @@ async def evaluate_transaction(
 
     await manager.broadcast(
         {
+            "type": "transaction",
             "mandate_id": str(body.mandate_id),
             "transaction_id": str(body.transaction_id),
             "decision": outcome,
@@ -299,6 +351,9 @@ async def evaluate_transaction(
             "proposed_amount": body.proposed_amount,
             "razorpay_status": razorpay_status,
             "razorpay_order_id": razorpay_order_id,
+            "source": body.source,
+            "llm_review_flagged": ambiguity_result.is_ambiguous,
+            "llm_advisory_note": None,
         }
     )
 
@@ -314,6 +369,61 @@ async def evaluate_transaction(
         )
     )
 
+    # Advisory-only: everything above (decision, DB commit, broadcast) is
+    # already final. Nothing below this line can change it — on any
+    # failure here, the BLOCK stands exactly as already persisted.
+    if not already_logged and ambiguity_result.is_ambiguous:
+        logger.info(
+            json.dumps(
+                {
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "request_id": request_id,
+                    "transaction_id": str(body.transaction_id),
+                    "event": "block_flagged_for_review",
+                    "matched_condition": ambiguity_result.matched_condition,
+                }
+            )
+        )
+        note = advisory.request_advisory_opinion(
+            domain_txn, domain_mandate, decision, ambiguity_result.matched_condition
+        )
+        if note is not None:
+            db.query(TransactionLog).filter(
+                TransactionLog.transaction_id == body.transaction_id
+            ).update({"llm_advisory_note": note})
+            db.commit()
+            logger.info(
+                json.dumps(
+                    {
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "request_id": request_id,
+                        "transaction_id": str(body.transaction_id),
+                        "event": "advisory_opinion_received",
+                        "binding": False,
+                        "note": note,
+                    }
+                )
+            )
+            await manager.broadcast(
+                {
+                    "type": "advisory_update",
+                    "transaction_id": str(body.transaction_id),
+                    "llm_advisory_note": note,
+                }
+            )
+        else:
+            logger.info(
+                json.dumps(
+                    {
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "request_id": request_id,
+                        "transaction_id": str(body.transaction_id),
+                        "event": "advisory_call_failed",
+                        "fallback": "none - BLOCK decision already persisted, unaffected",
+                    }
+                )
+            )
+
     return TransactionDecisionOut(
         transaction_id=body.transaction_id,
         outcome=outcome,
@@ -323,3 +433,14 @@ async def evaluate_transaction(
         razorpay_status=razorpay_status,
         razorpay_order_id=razorpay_order_id,
     )
+
+
+@router.post("/evaluate_transaction", response_model=TransactionDecisionOut)
+# Default 20/minute; RATE_LIMIT_EVALUATE exists so a busy demo (shared venue
+# Wi-Fi behind one NAT IP) can be bumped from the deploy env without a code
+# change — e.g. "100/minute" for event day, then removed.
+@limiter.limit(os.environ.get("RATE_LIMIT_EVALUATE", "20/minute"))
+async def evaluate_transaction(
+    request: Request, body: TransactionRequestIn, db: Session = Depends(get_db)
+) -> TransactionDecisionOut:
+    return await _evaluate_and_persist(body, db)

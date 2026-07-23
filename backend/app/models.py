@@ -69,6 +69,16 @@ class TransactionLog(Base):
     # Nullable: pre-existing rows predate the Razorpay integration.
     razorpay_status: Mapped[str | None] = mapped_column(String, nullable=True)
     razorpay_order_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # "manual" | "demo" | "agent" — how this transaction was initiated,
+    # distinct from `decision`. Never changes the evaluation code path.
+    source: Mapped[str] = mapped_column(String, nullable=False, default="manual")
+    # Advisory-only layer, never a decision input: `decision` above is final
+    # and persisted before either of these is touched. llm_review_flagged is
+    # set synchronously/deterministically by ambiguity.is_ambiguous_block();
+    # llm_advisory_note is filled in afterward (may stay null forever if the
+    # advisory call fails — that failure never changes `decision`).
+    llm_review_flagged: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    llm_advisory_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped["DateTime"] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

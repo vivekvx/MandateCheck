@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   connectTransactionsFeed,
+  fetchRecentTransactions,
   type FeedConnectionStatus,
   type TransactionBroadcast,
 } from "@/lib/api/transactions";
@@ -57,9 +58,18 @@ function DecisionBadge({ tone }: { tone: Tone }) {
   );
 }
 
+// Long order ids ("order_QwErTy12AbCd34Ef") get a middle-ellipsis so the
+// badge never dominates the row on a narrow viewport.
+function formatOrderId(id: string): string {
+  if (id.length <= 20) return id;
+  return `${id.slice(0, 12)}…${id.slice(-4)}`;
+}
+
 // Razorpay delivery status is a second axis, distinct from the allow/block
 // verdict above: a rules-engine ALLOW can still fail to reach Razorpay
-// (timeout/4xx/5xx), and that must never read as a MandateCheck block.
+// (timeout/4xx/5xx), and that must never read as a MandateCheck block. Uses
+// `relay` (steel-blue), not `flag`'s gold or `block`'s red — a delivery
+// failure is a system/rail problem, not a rules-engine judgment call.
 function RazorpayBadge({
   status,
   orderId,
@@ -69,19 +79,42 @@ function RazorpayBadge({
 }) {
   if (status === "ALLOWED_AND_SENT") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-sm border border-verdant-400/60 bg-transparent px-2 py-0.5 text-xs font-mono text-verdant-700 dark:text-verdant-400">
-        → Razorpay: sent{orderId ? ` (${orderId})` : ""}
+      <span className="inline-flex items-center gap-1 rounded-sm border border-verdant-400 bg-verdant-100 px-2 py-0.5 text-xs font-mono font-medium text-verdant-700 dark:bg-verdant-700/20 dark:text-verdant-400">
+        → Razorpay: sent{orderId ? ` (${formatOrderId(orderId)})` : ""}
       </span>
     );
   }
   if (status === "RAZORPAY_ERROR") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-sm border border-amber-500/60 bg-transparent px-2 py-0.5 text-xs font-mono text-amber-600 dark:text-amber-400">
+      <span className="inline-flex items-center gap-1 rounded-sm border border-relay-500 bg-relay-100 px-2 py-0.5 text-xs font-mono font-medium text-relay-600 dark:bg-relay-600/20 dark:text-relay-500">
         → Razorpay: delivery failed
       </span>
     );
   }
   return null; // BLOCKED: the BLOCK badge already says everything needed
+}
+
+// Advisory-only, never a decision — deliberately not reusing block/flag/
+// relay colors so it can't be misread as another verdict. amber, distinct
+// from verdant (allow), block-red (block), flag-gold, and relay-blue.
+function AdvisoryBadge({
+  hasNote,
+  expanded,
+  onToggle,
+}: {
+  hasNote: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="inline-flex items-center gap-1 rounded-sm border border-amber-500 bg-amber-100 px-2 py-0.5 text-xs font-mono font-medium text-amber-700 hover:bg-amber-200 dark:bg-amber-600/20 dark:text-amber-400 dark:hover:bg-amber-600/30"
+    >
+      Flagged for review{hasNote ? (expanded ? " ▲" : " ▼") : "…"}
+    </button>
+  );
 }
 
 function EmptyState() {
@@ -101,15 +134,52 @@ function EmptyState() {
 export default function LiveFeed() {
   const [entries, setEntries] = useState<TransactionBroadcast[]>([]);
   const [status, setStatus] = useState<FeedConnectionStatus>("connecting");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const seenIds = useRef<Set<string>>(new Set());
   const reduceMotion = useReducedMotion();
 
   useEffect(() => {
-    const disconnect = connectTransactionsFeed((broadcast) => {
-      if (seenIds.current.has(broadcast.transaction_id)) return;
-      seenIds.current.add(broadcast.transaction_id);
-      setEntries((prev) => [broadcast, ...prev].slice(0, MAX_ENTRIES));
-    }, setStatus);
+    const disconnect = connectTransactionsFeed(
+      (broadcast) => {
+        if (seenIds.current.has(broadcast.transaction_id)) return;
+        seenIds.current.add(broadcast.transaction_id);
+        setEntries((prev) => [broadcast, ...prev].slice(0, MAX_ENTRIES));
+      },
+      setStatus,
+      (update) => {
+        // Patches an already-rendered entry in place — the advisory note
+        // arrives after the decision it comments on, never before.
+        setEntries((prev) =>
+          prev.map((entry) =>
+            entry.transaction_id === update.transaction_id
+              ? { ...entry, llm_advisory_note: update.llm_advisory_note }
+              : entry
+          )
+        );
+      }
+    );
+
+    // Runs independently of the WebSocket connect above: whichever arrives
+    // first wins for a given transaction_id, the other is deduped via
+    // seenIds so a transaction that lands right as this resolves never
+    // renders twice.
+    fetchRecentTransactions()
+      .then((history) => {
+        setEntries((prev) => {
+          const merged = [...prev];
+          for (const item of history) {
+            if (seenIds.current.has(item.transaction_id)) continue;
+            seenIds.current.add(item.transaction_id);
+            merged.push(item);
+          }
+          return merged.slice(0, MAX_ENTRIES);
+        });
+      })
+      .catch(() => {
+        // Historical load is a nice-to-have; the live feed still works
+        // without it, so a fetch failure here is silent rather than
+        // blocking the page.
+      });
 
     return disconnect;
   }, []);
@@ -160,6 +230,17 @@ export default function LiveFeed() {
                         status={entry.razorpay_status}
                         orderId={entry.razorpay_order_id}
                       />
+                      {entry.llm_review_flagged && (
+                        <AdvisoryBadge
+                          hasNote={Boolean(entry.llm_advisory_note)}
+                          expanded={expandedId === entry.transaction_id}
+                          onToggle={() =>
+                            setExpandedId((current) =>
+                              current === entry.transaction_id ? null : entry.transaction_id
+                            )
+                          }
+                        />
+                      )}
                       <span className="font-mono text-sm font-medium text-text-primary">
                         {entry.merchant_id ?? "unknown merchant"}
                       </span>
@@ -179,6 +260,13 @@ export default function LiveFeed() {
                       {entry.flag_reason}
                     </p>
                   )}
+                  {entry.llm_review_flagged &&
+                    entry.llm_advisory_note &&
+                    expandedId === entry.transaction_id && (
+                      <p className="text-sm text-amber-700 dark:text-amber-400">
+                        LLM advisory (non-binding): {entry.llm_advisory_note}
+                      </p>
+                    )}
                   <div className="flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-xs text-text-muted">
                     <span>mandate: {entry.mandate_id}</span>
                     <span>txn: {entry.transaction_id}</span>

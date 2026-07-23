@@ -1,5 +1,7 @@
 import KillSwitch from "@/components/KillSwitch";
 import LiveFeed from "@/components/LiveFeed";
+import RunAgent from "@/components/RunAgent";
+import RunDemo from "@/components/RunDemo";
 
 export default function FeedPage() {
   return (
@@ -13,6 +15,8 @@ export default function FeedPage() {
           a mandate&apos;s access immediately.
         </p>
       </div>
+      <RunDemo />
+      <RunAgent />
       <KillSwitch />
       <LiveFeed />
     </main>
