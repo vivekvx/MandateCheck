@@ -52,6 +52,49 @@ Added 2026-07-21.
   or TransactionLog tables.
 - No frontend, no auth, no webhook notifications for this item yet.
 
+## Post-hoc fix — server-authoritative clock + atomic spend-cap/replay
+Found by manual code review, not a pivot on scope. Added 2026-07-28.
+
+Two correctness/security bugs in routes/transactions.py, both undermining
+claims already made elsewhere (README's "fails closed", the replay-detection
+scenario in rules_engine.py):
+
+- **Client-controlled clock.** `context["now"]` (and the domain
+  TransactionRequest's `.timestamp`, which rules_engine.py reads directly
+  for the time-of-day window check) was built from the request body's own
+  `timestamp` field — an agent could simply lie about the time to dodge
+  expiry/time-window checks. Fixed: both now come from the server's own
+  `datetime.now(timezone.utc)`. The client-claimed value is kept only as an
+  audit field in structured logs (`claimed_timestamp`), never fed into any
+  check.
+- **TOCTOU races on spend caps and replay.** window/lifetime totals were a
+  plain SELECT-then-INSERT with no lock — concurrent requests against the
+  same mandate could all read the same pre-spend total and all pass a cap
+  only one should fit under. Replay detection was a pre-check SELECT with
+  the same flaw — two requests with the same transaction_id could both see
+  "not seen yet." Fixed: a `SELECT ... FOR UPDATE` row lock on the mandate
+  serializes concurrent evaluations per mandate (closes the cap race); an
+  INSERT-attempt-first with the unique-constraint violation on
+  transaction_id as the authoritative replay signal replaces the pre-check
+  SELECT (closes the replay race), and happens before any Razorpay call so
+  a replay can never create a duplicate order.
+- No new locking/queueing infrastructure — Postgres row locks and the
+  existing PK unique constraint only, proportional to the current
+  single-instance scope.
+- New tests: `backend/tests/test_concurrency.py` — fires genuinely
+  concurrent requests (separate OS threads, separate DB sessions, separate
+  event loops, bypassing TestClient's shared portal on purpose) directly
+  against real Postgres. Confirmed both fail against the pre-fix code
+  (2-4 of 5 wrongly allowed past a window cap; a replay run crashed with a
+  real `UniqueViolation`) and pass reliably post-fix.
+- Files touched: `backend/app/routes/transactions.py`,
+  `backend/tests/test_concurrency.py` (new), plus a two-method mock
+  passthrough (`with_for_update`, `flush`) added to the pre-existing
+  `FakeSession`/`FakeQuery` test doubles in `test_advisory_triage.py` and
+  `test_razorpay_integration.py` so they still model the new DB calls —
+  nothing else in those two files changed. rules_engine.py itself was not
+  touched.
+
 ## Open questions — flag, don't silently decide
 - Frontend host port is 7009, not 3000/4000 (both collided locally) —
   confirmed in docker-compose.yml and README, NEXT_PUBLIC_API_BASE_URL

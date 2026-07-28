@@ -9,7 +9,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 
 from fastapi import (
     APIRouter,
@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import advisory, ambiguity, domain, razorpay_client, rules_engine
@@ -178,34 +179,34 @@ def _mandate_row_to_domain(row: Mandate) -> domain.Mandate:
     )
 
 
-def _request_to_domain(req: TransactionRequestIn) -> domain.TransactionRequest:
+def _request_to_domain(req: TransactionRequestIn, now: datetime) -> domain.TransactionRequest:
+    # `now` is the server-authoritative clock (see _evaluate_and_persist), not
+    # req.timestamp — rules_engine.py reads txn.timestamp directly for the
+    # time-of-day window check, so that field must be trustworthy too, not
+    # just context["now"].
     return domain.TransactionRequest(
         transaction_id=str(req.transaction_id),
         mandate_id=str(req.mandate_id),
         proposed_amount=req.proposed_amount,
         merchant_id=req.merchant_id,
         category=req.category,
-        timestamp=req.timestamp,
+        timestamp=now,
         source_content=req.source_content,
         agent_reasoning=req.agent_reasoning,
     )
 
 
-def _build_context(
-    db: Session, mandate_row: Mandate, req: TransactionRequestIn, window_seconds: float
-) -> tuple[dict, bool]:
-    already_logged = (
-        db.query(TransactionLog.transaction_id)
-        .filter(
-            TransactionLog.mandate_id == mandate_row.mandate_id,
-            TransactionLog.transaction_id == req.transaction_id,
-        )
-        .first()
-        is not None
-    )
-    seen_transaction_ids = {str(req.transaction_id)} if already_logged else set()
-
-    window_start = req.timestamp - timedelta(seconds=window_seconds)
+def _build_context(db: Session, mandate_row: Mandate, now: datetime, window_seconds: float) -> dict:
+    """Spend-cap totals only. Replay detection no longer lives here: a
+    pre-check SELECT can't be made safe against two genuinely concurrent
+    requests carrying the same transaction_id (both would read "not seen
+    yet"). That's now handled in _evaluate_and_persist via an authoritative
+    unique-constraint violation on insert. Caller must hold the mandate row
+    lock (SELECT ... FOR UPDATE) before calling this, so the totals read
+    here can't be stale relative to a concurrent writer for the same
+    mandate — closes the spend-cap TOCTOU race.
+    """
+    window_start = now - timedelta(seconds=window_seconds)
     window_total = (
         db.query(func.coalesce(func.sum(TransactionLog.proposed_amount), 0))
         .filter(
@@ -224,13 +225,12 @@ def _build_context(
         .scalar()
     )
 
-    context = {
-        "now": req.timestamp,
-        "seen_transaction_ids": seen_transaction_ids,
+    return {
+        "now": now,
+        "seen_transaction_ids": set(),
         "window_total": float(window_total),
         "lifetime_total": float(lifetime_total),
     }
-    return context, already_logged
 
 
 async def _evaluate_and_persist(
@@ -241,6 +241,13 @@ async def _evaluate_and_persist(
     run exercises exactly this code, not a parallel copy of it."""
     request_id = str(uuid.uuid4())
 
+    # body.timestamp is client-claimed and untrusted (the caller controls
+    # the request body) — kept only as an audit field below, never as an
+    # input to any allow/block decision. The server's own clock is the only
+    # authoritative "now" for expiry, time-window, and spend-window checks.
+    claimed_timestamp = body.timestamp
+    now = datetime.now(timezone.utc)
+
     # Fail closed: any unhandled error between here and the commit must
     # surface as a rejection, never as an "allow" the caller could act on.
     try:
@@ -248,10 +255,20 @@ async def _evaluate_and_persist(
         if mandate_row is None:
             raise HTTPException(status_code=404, detail="mandate not found")
 
+        # Row lock on the mandate: serializes concurrent evaluate calls
+        # against the SAME mandate, so the spend-window/lifetime SELECT in
+        # _build_context can never be read by a second request before the
+        # first has committed its write. Without this, two concurrent
+        # requests can both read the same pre-spend total and both pass a
+        # cap that only one of them should fit under. Result discarded —
+        # mandate_row above already holds the row; this call exists only to
+        # take and hold the lock for the rest of this transaction.
+        db.query(Mandate).filter(Mandate.mandate_id == body.mandate_id).with_for_update().first()
+
         domain_mandate = _mandate_row_to_domain(mandate_row)
-        domain_txn = _request_to_domain(body)
+        domain_txn = _request_to_domain(body, now)
         window_seconds = domain_mandate.window_duration
-        context, already_logged = _build_context(db, mandate_row, body, window_seconds)
+        context = _build_context(db, mandate_row, now, window_seconds)
 
         decision = rules_engine.evaluate(domain_txn, domain_mandate, context)
         outcome = decision.outcome.lower()
@@ -263,13 +280,57 @@ async def _evaluate_and_persist(
             decision, domain_txn, domain_mandate, context
         )
 
+        # Reserve the row now, before any external call. transaction_id is
+        # the primary key, so this INSERT is the authoritative replay
+        # signal: a pre-check SELECT can't correctly handle two requests
+        # with the same transaction_id arriving genuinely concurrently
+        # (both would see "not seen yet" and both proceed). Here, the
+        # second one's flush blocks on Postgres's own unique-index lock
+        # until the first commits, then fails with IntegrityError — caught
+        # below, before Razorpay is ever called for it. razorpay_status/
+        # order_id are still unknown at this point, filled in after.
+        log_row = TransactionLog(
+            transaction_id=body.transaction_id,
+            mandate_id=body.mandate_id,
+            proposed_amount=body.proposed_amount,
+            merchant_id=body.merchant_id,
+            category=body.category,
+            timestamp=now,
+            source_content=body.source_content,
+            agent_reasoning=body.agent_reasoning,
+            decision=outcome,
+            reason=decision.reason,
+            flagged=decision.flagged,
+            flag_reason=decision.flag_reason,
+            razorpay_status=None,
+            razorpay_order_id=None,
+            source=body.source,
+            llm_review_flagged=ambiguity_result.is_ambiguous,
+        )
+        db.add(log_row)
+        is_replay = False
+        try:
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            is_replay = True
+            decision = rules_engine.Decision("BLOCK", "replay: transaction_id already seen")
+            outcome = "block"
+            # Re-classify against the replay decision — falls through
+            # ambiguity's catch-all (never ambiguous), kept for consistency
+            # rather than hardcoding that assumption here.
+            ambiguity_result = ambiguity.is_ambiguous_block(
+                decision, domain_txn, domain_mandate, context
+            )
+
         # Razorpay is called strictly after the rules-engine verdict, and
-        # strictly only on "allow" — a blocked transaction must never reach
-        # this call. A Razorpay-side failure (timeout/4xx/5xx) is its own
-        # distinct state, not a MandateCheck block: the decision stays
-        # "allow", only razorpay_status reflects the delivery failure.
+        # strictly only on a genuine (non-replay) "allow" — a blocked or
+        # replayed transaction must never reach this call. A Razorpay-side
+        # failure (timeout/4xx/5xx) is its own distinct state, not a
+        # MandateCheck block: the decision stays "allow", only
+        # razorpay_status reflects the delivery failure.
         razorpay_order_id: str | None = None
-        if outcome == "block":
+        if is_replay or outcome == "block":
             razorpay_status = "BLOCKED"
         else:
             try:
@@ -294,29 +355,12 @@ async def _evaluate_and_persist(
                 )
                 razorpay_status = "RAZORPAY_ERROR"
 
-        # transaction_id is the client-generated PK; a replay reuses the same
-        # id, so there's nothing new to persist — the original row already
-        # holds the first decision.
-        if not already_logged:
-            log_row = TransactionLog(
-                transaction_id=body.transaction_id,
-                mandate_id=body.mandate_id,
-                proposed_amount=body.proposed_amount,
-                merchant_id=body.merchant_id,
-                category=body.category,
-                timestamp=body.timestamp,
-                source_content=body.source_content,
-                agent_reasoning=body.agent_reasoning,
-                decision=outcome,
-                reason=decision.reason,
-                flagged=decision.flagged,
-                flag_reason=decision.flag_reason,
-                razorpay_status=razorpay_status,
-                razorpay_order_id=razorpay_order_id,
-                source=body.source,
-                llm_review_flagged=ambiguity_result.is_ambiguous,
-            )
-            db.add(log_row)
+        # A replay's row was already committed by whichever request won the
+        # race above — nothing left to persist, and the mandate lock was
+        # already released by the rollback that detected it.
+        if not is_replay:
+            log_row.razorpay_status = razorpay_status
+            log_row.razorpay_order_id = razorpay_order_id
             db.commit()
     except HTTPException:
         raise
@@ -346,7 +390,7 @@ async def _evaluate_and_persist(
             "reason": decision.reason,
             "flagged": decision.flagged,
             "flag_reason": decision.flag_reason,
-            "timestamp": body.timestamp.isoformat(),
+            "timestamp": now.isoformat(),
             "merchant_id": body.merchant_id,
             "proposed_amount": body.proposed_amount,
             "razorpay_status": razorpay_status,
@@ -360,11 +404,13 @@ async def _evaluate_and_persist(
     logger.info(
         json.dumps(
             {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": now.isoformat(),
                 "request_id": request_id,
                 "mandate_id": str(body.mandate_id),
                 "decision": outcome,
                 "reason": decision.reason,
+                # Audit-only — never fed into any check above.
+                "claimed_timestamp": claimed_timestamp.isoformat(),
             }
         )
     )
@@ -372,7 +418,7 @@ async def _evaluate_and_persist(
     # Advisory-only: everything above (decision, DB commit, broadcast) is
     # already final. Nothing below this line can change it — on any
     # failure here, the BLOCK stands exactly as already persisted.
-    if not already_logged and ambiguity_result.is_ambiguous:
+    if not is_replay and ambiguity_result.is_ambiguous:
         logger.info(
             json.dumps(
                 {

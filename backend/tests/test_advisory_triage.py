@@ -50,6 +50,9 @@ class FakeQuery:
     def filter(self, *args, **kwargs):
         return self
 
+    def with_for_update(self):
+        return self
+
     def first(self):
         return None
 
@@ -76,6 +79,9 @@ class FakeSession:
 
     def add(self, row) -> None:
         self.added.append(row)
+
+    def flush(self) -> None:
+        pass
 
     def commit(self) -> None:
         self.committed = True
