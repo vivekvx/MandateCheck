@@ -9,7 +9,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, time, timedelta, timezone
+from datetime import datetime, time
 
 from fastapi import (
     APIRouter,
@@ -23,11 +23,9 @@ from fastapi import (
 from pydantic import BaseModel, ConfigDict
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy import func
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import advisory, ambiguity, domain, razorpay_client, rules_engine
+from app import advisory, ambiguity, domain, guard, razorpay_client, rules_engine
 from app.db import get_db
 from app.models import Mandate, TransactionLog
 
@@ -206,30 +204,31 @@ def _build_context(db: Session, mandate_row: Mandate, now: datetime, window_seco
     here can't be stale relative to a concurrent writer for the same
     mandate — closes the spend-cap TOCTOU race.
     """
-    window_start = now - timedelta(seconds=window_seconds)
-    window_total = (
-        db.query(func.coalesce(func.sum(TransactionLog.proposed_amount), 0))
-        .filter(
-            TransactionLog.mandate_id == mandate_row.mandate_id,
-            TransactionLog.decision == "allow",
-            TransactionLog.timestamp >= window_start,
-        )
-        .scalar()
+    ws = guard.window_start(now, window_seconds)
+    window_total = guard.sum_amount_since(
+        db,
+        TransactionLog.mandate_id,
+        mandate_row.mandate_id,
+        TransactionLog.proposed_amount,
+        TransactionLog.decision,
+        "allow",
+        since=ws,
+        timestamp_column=TransactionLog.timestamp,
     )
-    lifetime_total = (
-        db.query(func.coalesce(func.sum(TransactionLog.proposed_amount), 0))
-        .filter(
-            TransactionLog.mandate_id == mandate_row.mandate_id,
-            TransactionLog.decision == "allow",
-        )
-        .scalar()
+    lifetime_total = guard.sum_amount_since(
+        db,
+        TransactionLog.mandate_id,
+        mandate_row.mandate_id,
+        TransactionLog.proposed_amount,
+        TransactionLog.decision,
+        "allow",
     )
 
     return {
         "now": now,
         "seen_transaction_ids": set(),
-        "window_total": float(window_total),
-        "lifetime_total": float(lifetime_total),
+        "window_total": window_total,
+        "lifetime_total": lifetime_total,
     }
 
 
@@ -246,7 +245,7 @@ async def _evaluate_and_persist(
     # input to any allow/block decision. The server's own clock is the only
     # authoritative "now" for expiry, time-window, and spend-window checks.
     claimed_timestamp = body.timestamp
-    now = datetime.now(timezone.utc)
+    now = guard.server_now()
 
     # Fail closed: any unhandled error between here and the commit must
     # surface as a rejection, never as an "allow" the caller could act on.
@@ -263,7 +262,7 @@ async def _evaluate_and_persist(
         # cap that only one of them should fit under. Result discarded —
         # mandate_row above already holds the row; this call exists only to
         # take and hold the lock for the rest of this transaction.
-        db.query(Mandate).filter(Mandate.mandate_id == body.mandate_id).with_for_update().first()
+        guard.lock_row_for_update(db, Mandate, Mandate.mandate_id, body.mandate_id)
 
         domain_mandate = _mandate_row_to_domain(mandate_row)
         domain_txn = _request_to_domain(body, now)
@@ -307,13 +306,8 @@ async def _evaluate_and_persist(
             source=body.source,
             llm_review_flagged=ambiguity_result.is_ambiguous,
         )
-        db.add(log_row)
-        is_replay = False
-        try:
-            db.flush()
-        except IntegrityError:
-            db.rollback()
-            is_replay = True
+        is_replay = guard.insert_with_replay_detection(db, log_row)
+        if is_replay:
             decision = rules_engine.Decision("BLOCK", "replay: transaction_id already seen")
             outcome = "block"
             # Re-classify against the replay decision — falls through
