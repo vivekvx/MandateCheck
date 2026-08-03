@@ -133,10 +133,14 @@ export async function fetchActiveMandates(
   return (data.items as MandateSummary[]).filter((m) => m.status === "active");
 }
 
-export async function revokeMandate(mandateId: string): Promise<void> {
-  const res = await fetch(`${API_BASE_URL}/mandates/${mandateId}/revoke`, {
-    method: "POST",
-  });
+export async function revokeMandate(
+  mandateId: string,
+  userId: string
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE_URL}/mandates/${mandateId}/revoke?${new URLSearchParams({ user_id: userId })}`,
+    { method: "POST" }
+  );
   if (!res.ok) {
     throw new Error(`failed to revoke mandate: ${res.status}`);
   }

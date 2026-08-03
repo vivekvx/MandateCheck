@@ -63,6 +63,12 @@ def get_mandate(mandate_id: uuid.UUID, db: Session = Depends(get_db)):
 
 @router.get("/mandates", response_model=MandateListResponse)
 def list_mandates(
+    # user_id is a caller-supplied, unverified identifier — anyone who
+    # knows or guesses another session's user_id can list that session's
+    # mandates. This is a real limitation of the current no-auth design
+    # (see CLAUDE.md, "No auth"), not a bug to be fixed without adding
+    # real authentication. Do not add an ownership/session check here
+    # without a broader auth decision.
     user_id: str = Query(...),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -82,9 +88,18 @@ def list_mandates(
 
 
 @router.post("/mandates/{mandate_id}/revoke", response_model=MandateResponse)
-def revoke_mandate(mandate_id: uuid.UUID, db: Session = Depends(get_db)):
+def revoke_mandate(
+    mandate_id: uuid.UUID,
+    user_id: str = Query(...),
+    db: Session = Depends(get_db),
+):
     mandate = db.get(Mandate, mandate_id)
-    if mandate is None:
+    # Same no-auth posture as GET /mandates: user_id is a caller-supplied,
+    # unverified identifier, not a real session. But this endpoint mutates
+    # state, so it must still confirm the supplied user_id matches the
+    # mandate's owner before acting. 404 (not 403) on mismatch: don't
+    # reveal that a mandate_id exists under a different owner.
+    if mandate is None or mandate.user_id != user_id:
         raise HTTPException(status_code=404, detail="mandate not found")
     mandate.status = "revoked"
     db.commit()

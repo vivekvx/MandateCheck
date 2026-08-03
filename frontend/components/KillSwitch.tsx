@@ -61,13 +61,13 @@ export default function KillSwitch() {
   }, [revokeState]);
 
   const handleConfirm = async () => {
-    if (!selectedId) return;
+    if (!selectedId || !identity) return;
     const target = mandates.find((m) => m.mandate_id === selectedId);
     setRevokeState("revoking");
     setRevokeError(null);
     const startedAt = Date.now();
     try {
-      await revokeMandate(selectedId);
+      await revokeMandate(selectedId, identity.userId);
       const elapsed = Date.now() - startedAt;
       if (elapsed < MIN_REVOKING_MS) {
         await new Promise((r) => setTimeout(r, MIN_REVOKING_MS - elapsed));
