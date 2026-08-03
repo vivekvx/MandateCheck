@@ -99,5 +99,9 @@ scenario in rules_engine.py):
 - Frontend host port is 7009, not 3000/4000 (both collided locally) —
   confirmed in docker-compose.yml and README, NEXT_PUBLIC_API_BASE_URL
   unaffected (still points at backend's 8000)
-- No auth anywhere in the app; KillSwitch scoped to NEXT_PUBLIC_DEMO_USER_ID
-  — deliberate, fine for demo, not a real multi-user boundary
+- No auth anywhere in the app; identity is a random per-browser value in
+  localStorage (frontend/lib/identity.ts), not NEXT_PUBLIC_DEMO_USER_ID
+  (dead config, unused by any frontend code). Mandate ownership is now
+  verified server-side on revoke — user_id query param checked against
+  mandate.user_id, 404 on mismatch — but the identity itself is still not
+  a real session, so this remains not a real multi-user boundary.
