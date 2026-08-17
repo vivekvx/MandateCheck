@@ -28,7 +28,13 @@ def make_mandate_row(**overrides) -> Mandate:
         agent_platform="chatgpt",
         agent_display_name="Shopping Assistant",
         created_at=NOW - timedelta(days=1),
-        expires_at=NOW + timedelta(days=30),
+        # Checked against the real server clock (guard.server_now()), not
+        # NOW above — must stay in the future relative to wall-clock time,
+        # not just relative to this file's fixed NOW constant.
+        # far-future expiry, not a magic number — avoids this fixture
+        # silently failing again once the real clock catches up, per the
+        # 2026-08-17 expired-fixture bug.
+        expires_at=datetime.now(timezone.utc) + timedelta(days=36500),
         status="active",
         max_amount_per_txn=1000,
         max_amount_per_window=2000,
