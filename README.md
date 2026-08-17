@@ -34,6 +34,15 @@ Not every questionable case is clear-cut in the moment. If a completed transacti
 - The adversarial testing used a real, live language model, not scripted responses.
 - Two real concurrency bugs were found through testing and fixed: a client-controlled timestamp that could fool time-based checks, and a race condition that could let simultaneous requests exceed a spend cap. Both are covered by tests that fail against the old code and pass against the fix.
 
+## Metrics
+
+Measured directly against this codebase, not estimated. Testing-environment numbers, not production metrics.
+
+- **Real Razorpay test-mode transactions:** 0 — testing so far hasn't yet logged a persisted allow decision with a Razorpay order id.
+- **POST /evaluate_transaction response time:** p50 124.6ms, p95 192.8ms, n=50 real sequential requests (25 allow / 25 block, mixing per-transaction-cap, merchant, category, and replay block cases) against a live mandate. Measured locally: native Python/uvicorn backend + local Postgres, not Docker Compose and not Render/production — a deployed environment would show different numbers.
+- **TOCTOU spend-cap fix:** 5 concurrent requests against a window cap that only 1 should pass, run 5 times. Pre-fix: wrongly allowed 2 through instead of 1 in 1 of 5 runs (off by one request), 4 of 5 runs passed. Post-fix: 5 of 5 runs correct, no exceptions.
+- **TOCTOU replay fix:** 8 concurrent requests carrying an identical transaction_id, run 5 times. Pre-fix: crashed with an unhandled database error (`psycopg2.errors.UniqueViolation`) in 5 of 5 runs. Post-fix: 5 of 5 runs correct, no exceptions. Race-condition reproduction is inherently non-deterministic — these are this run's actual numbers on this machine, not a guaranteed worst case.
+
 ## Known limitations
 
 - No real bank or UPI integration — this runs against Razorpay's test mode only.
