@@ -35,6 +35,16 @@ you'll verify it works. Wait for confirmation before implementing.
 Any change to rules_engine.py is not done until all 8 scenarios in 
 tests/test_rules_engine.py pass. List them explicitly when you finish a change.
 
+## Local dev preferences
+Prefer running the backend natively (Python venv + a locally installed
+Postgres) over Docker Compose/Colima for day-to-day dev, testing, and
+measurement tasks — Colima's resource overhead isn't worth it when a
+native setup works. Reserve docker compose up for tasks that genuinely
+need the full containerized stack (e.g. verifying the Dockerfiles
+themselves, or a true clean-state end-to-end check before a release).
+If native setup isn't possible for some reason, say so and ask before
+falling back to Docker.
+
 ## Where other rules live (only load these when relevant)
 - .claude/rules/db.md — schema, indexing, query conventions
 - .claude/rules/api.md — endpoint and rate-limiting conventions
