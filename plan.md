@@ -95,6 +95,36 @@ scenario in rules_engine.py):
   nothing else in those two files changed. rules_engine.py itself was not
   touched.
 
+## Post-hoc fix — expired-fixture bug in two mock-session test files
+Found by investigating 6 failing tests during the metrics-gathering task,
+not a pivot on scope. Added 2026-08-17.
+
+- `test_advisory_triage.py` and `test_razorpay_integration.py` both build
+  their mock `Mandate` row's `expires_at` as `NOW + timedelta(days=30)`,
+  where `NOW` is a fixed constant (`datetime(2026, 7, 8, ...)`) baked in
+  when those files were written. That was fine while the server-
+  authoritative-clock fix (see above) still checked `expires_at` against
+  real wall-clock time and real wall-clock time was still before
+  2026-08-07 — but once real time passed that date, every transaction in
+  both files hit a legitimate `block: "mandate not active or expired"`
+  instead of the `allow` the tests expected. Not a regression from the
+  guard.py extraction, not an environment issue — a fixture that silently
+  expired against the very clock the fix it was testing made authoritative.
+  Confirmed by running one case directly and reading the logged decision;
+  confirmed no other field (`created_at`) is checked anywhere in
+  rules_engine.py — only `expires_at` (rules_engine.py:53).
+- Fixed: `expires_at` in both files now computed as
+  `datetime.now(timezone.utc) + timedelta(days=36500)` (~100 years) instead
+  of a fixed-date offset, so it can't silently expire again against real
+  time. One-line comment added directly above each occurrence explaining
+  why, referencing this bug. `NOW` itself and its other uses
+  (`created_at`, the request body's client-claimed `timestamp`) left
+  untouched — neither is checked against real time in the decision path.
+- Files touched: `backend/tests/test_advisory_triage.py`,
+  `backend/tests/test_razorpay_integration.py`. rules_engine.py,
+  domain.py, guard.py, routes/transactions.py not touched. Full suite
+  confirmed 26/26 passing after the fix.
+
 ## Open questions — flag, don't silently decide
 - Frontend host port is 7009, not 3000/4000 (both collided locally) —
   confirmed in docker-compose.yml and README, NEXT_PUBLIC_API_BASE_URL
