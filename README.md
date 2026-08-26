@@ -19,7 +19,7 @@ We tested this directly. A real language model, given a normal shopping task and
 ## How it works
 
 1. An AI agent proposes a transaction: an amount, a merchant, a category.
-2. MandateCheck checks it: is the mandate active and not expired? Has this exact transaction already been submitted (replay protection)? Is it within the spend caps — per transaction, over a rolling window, and over the mandate's lifetime? Is it an approved merchant and category? Is it inside the allowed time window? Does the content behind the request show signs of manipulation?
+2. MandateCheck checks it: is the mandate active and not expired? Has this exact transaction already been submitted (replay protection)? Is it within the spend caps — per transaction, over a rolling window, and over the mandate's lifetime? Is it an approved merchant and category? Is it inside the allowed time window? Does the content behind the request show structural or contextual signs of manipulation — false-authority claims, recipient/beneficiary swaps, embedded system-message-style payloads, price misdirection, Unicode homoglyph/zero-width tricks, or urgency paired with deferred verification — all checked deterministically, no model call?
 3. If everything checks out, the transaction is forwarded to Razorpay's real test-mode payment API.
 4. If anything fails, it's blocked, with a specific, logged reason.
 5. Every decision streams live to a dashboard. Any mandate's access can be revoked instantly.
@@ -42,13 +42,14 @@ Measured directly against this codebase, not estimated. Testing-environment numb
 - **POST /evaluate_transaction response time:** p50 124.6ms, p95 192.8ms, n=50 real sequential requests (25 allow / 25 block, mixing per-transaction-cap, merchant, category, and replay block cases) against a live mandate. Measured locally: native Python/uvicorn backend + local Postgres, not Docker Compose and not Render/production — a deployed environment would show different numbers.
 - **TOCTOU spend-cap fix:** 5 concurrent requests against a window cap that only 1 should pass, run 5 times. Pre-fix: wrongly allowed 2 through instead of 1 in 1 of 5 runs (off by one request), 4 of 5 runs passed. Post-fix: 5 of 5 runs correct, no exceptions.
 - **TOCTOU replay fix:** 8 concurrent requests carrying an identical transaction_id, run 5 times. Pre-fix: crashed with an unhandled database error (`psycopg2.errors.UniqueViolation`) in 5 of 5 runs. Post-fix: 5 of 5 runs correct, no exceptions. Race-condition reproduction is inherently non-deterministic — these are this run's actual numbers on this machine, not a guaranteed worst case.
+- **Injection-detection eval (checks 9–10):** held-out eval results, not production metrics. Measured against a 50-entry adversarial dataset (30 malicious, 20 benign) generated blind, without access to the detector's patterns. Baseline (before improvement): 0% recall (0/30 malicious caught), 25% false-positive rate (5/20 benign wrongly flagged/blocked). After improvement: 96.67% recall (29/30), 0% false positives (0/20), F1 0.98. One miss remains: pure scarcity/urgency framing without deferred-verification language, indistinguishable from legitimate flash-sale copy by deterministic means.
 
 ## Known limitations
 
 - No real bank or UPI integration — this runs against Razorpay's test mode only.
 - No production-grade authentication. Identity is a randomly generated per-browser value, not a verified login. Mandate ownership is checked server-side, but the identity system itself is a demo convenience, not a security boundary.
 - Suspicious-but-not-clearly-hostile language is flagged for review rather than blocked outright — this can't be proven malicious with certainty by a pattern match alone, so it's surfaced to a human instead of guessed at.
-- Injection detection uses a fixed set of known attack phrasings. A reworded attack could evade it. This is a real, open gap.
+- Injection detection covers 8 attack categories with 96.67% recall on a blind held-out set; pure scarcity/urgency framing without explicit verification-deferral language remains uncovered; novel phrasings outside the evaluated categories are unproven.
 - The live dashboard's real-time updates run on a single server process; there's no distributed message queue behind it at this scale.
 
 ## Tech stack
