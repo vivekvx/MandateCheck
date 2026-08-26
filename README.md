@@ -38,7 +38,7 @@ Not every questionable case is clear-cut in the moment. If a completed transacti
 
 Measured directly against this codebase, not estimated. Testing-environment numbers, not production metrics.
 
-- **Real Razorpay test-mode transactions:** 0 — testing so far hasn't yet logged a persisted allow decision with a Razorpay order id.
+- **Real Razorpay test-mode transactions:** 30 — created during testing/demo runs, not production traffic.
 - **POST /evaluate_transaction response time:** p50 124.6ms, p95 192.8ms, n=50 real sequential requests (25 allow / 25 block, mixing per-transaction-cap, merchant, category, and replay block cases) against a live mandate. Measured locally: native Python/uvicorn backend + local Postgres, not Docker Compose and not Render/production — a deployed environment would show different numbers.
 - **TOCTOU spend-cap fix:** 5 concurrent requests against a window cap that only 1 should pass, run 5 times. Pre-fix: wrongly allowed 2 through instead of 1 in 1 of 5 runs (off by one request), 4 of 5 runs passed. Post-fix: 5 of 5 runs correct, no exceptions.
 - **TOCTOU replay fix:** 8 concurrent requests carrying an identical transaction_id, run 5 times. Pre-fix: crashed with an unhandled database error (`psycopg2.errors.UniqueViolation`) in 5 of 5 runs. Post-fix: 5 of 5 runs correct, no exceptions. Race-condition reproduction is inherently non-deterministic — these are this run's actual numbers on this machine, not a guaranteed worst case.
@@ -55,3 +55,7 @@ Measured directly against this codebase, not estimated. Testing-environment numb
 ## Tech stack
 
 FastAPI, PostgreSQL, SQLAlchemy · Next.js, React, Tailwind · LiteLLM/Groq (used only for the adversarial test harness and escalated-claim summaries, never for the core allow/block decision) · Razorpay test-mode API · Docker Compose
+
+## Getting Started
+
+To reset to a clean demo state: `python backend/seed_demo.py`
