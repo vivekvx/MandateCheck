@@ -74,6 +74,8 @@ Measured directly against this codebase, not estimated. Testing-environment numb
 - **TOCTOU replay fix:** 8 concurrent requests carrying an identical transaction_id, run 5 times. Pre-fix: crashed with an unhandled database error (`psycopg2.errors.UniqueViolation`) in 5 of 5 runs. Post-fix: 5 of 5 runs correct, no exceptions. Race-condition reproduction is inherently non-deterministic — these are this run's actual numbers on this machine, not a guaranteed worst case.
 - **Injection-detection eval (checks 9–10):** held-out eval results, not production metrics. Measured against a 50-entry adversarial dataset (30 malicious, 20 benign) generated blind, without access to the detector's patterns. Baseline (before improvement): 0% recall (0/30 malicious caught), 25% false-positive rate (5/20 benign wrongly flagged/blocked). After improvement: 96.67% recall (29/30), 0% false positives (0/20), F1 0.98. One miss remains: pure scarcity/urgency framing without deferred-verification language, indistinguishable from legitimate flash-sale copy by deterministic means.
 
+Full methodology, dataset, and per-entry results: [eval/REPORT.md](eval/REPORT.md)
+
 ## Known limitations
 
 - No real bank or UPI integration — this runs against Razorpay's test mode only.
