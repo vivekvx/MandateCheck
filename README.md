@@ -2,6 +2,36 @@
 
 A deterministic safety gate for AI agents that spend money.
 
+## Use it
+
+```python
+from datetime import datetime, time
+from mandate_guard import Mandate, TransactionRequest, evaluate
+
+mandate = Mandate(
+    mandate_id="m_01", user_id="u_01", agent_id="agent_01",
+    agent_platform="openai", agent_display_name="Grocery Agent",
+    created_at=datetime(2026, 8, 1), expires_at=datetime(2026, 9, 1),
+    status="active", max_amount_per_txn=500.0, max_amount_per_window=2000.0,
+    window_duration=86400.0, max_amount_total=10000.0,
+    merchant_allowlist=["bigbasket"], category_allowlist=["groceries"],
+    allowed_time_window=(time(6, 0), time(22, 0)),
+    original_intent_text="Order groceries, up to Rs 500 per order",
+    user_facing_summary="Groceries only, max Rs 500 per order",
+)
+txn = TransactionRequest(
+    transaction_id="txn_01", mandate_id="m_01", proposed_amount=420.0,
+    merchant_id="bigbasket", category="groceries",
+    timestamp=datetime(2026, 8, 15, 10, 30),
+    source_content="Weekly grocery list: milk, rice, vegetables",
+    agent_reasoning="Restocking the weekly staples",
+)
+result = evaluate(txn, mandate, context={"now": datetime(2026, 8, 15, 10, 30)})
+# result.outcome == "ALLOW" — flip proposed_amount to 600.0 and it is "BLOCK"
+```
+
+This is the core gate. Everything else — the API, the dashboard, the Razorpay integration — is built on top of this function.
+
 ## What it does
 
 When an AI agent has permission to make payments on your behalf, something has to make sure it stays within the rules — even if the agent gets confused, is fed bad instructions, or tries to do something it wasn't authorized to do.
