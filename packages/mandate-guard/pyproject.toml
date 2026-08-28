@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mandate-guard"
+version = "0.1.0"
+description = "A deterministic gate that checks AI-agent payment requests against a user-defined mandate."
+requires-python = ">=3.10"
+# engine.py / types.py / patterns.py are stdlib-only. guard.py (spend-cap,
+# replay, clock) takes a SQLAlchemy Session and Column objects, so
+# SQLAlchemy is the package's only runtime dependency. No FastAPI, no
+# httpx, no litellm — those belong to the MandateCheck app, not the gate.
+dependencies = ["sqlalchemy>=2.0"]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mandate_guard"]
