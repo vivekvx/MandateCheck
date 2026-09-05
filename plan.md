@@ -125,6 +125,44 @@ not a pivot on scope. Added 2026-08-17.
   domain.py, guard.py, routes/transactions.py not touched. Full suite
   confirmed 26/26 passing after the fix.
 
+## Post-hoc fix — decommissioned Groq model
+Found by a live parse_intent call failing, not a pivot on scope. Added 2026-09-05.
+
+- `groq/llama-3.1-8b-instant` (the HARNESS_MODEL default) was decommissioned
+  by Groq. Replaced with `groq/openai/gpt-oss-20b` as the new default across
+  every LLM callsite: `backend/app/agent_runner.py`,
+  `backend/app/adjudication.py`, `backend/app/advisory.py`,
+  `backend/harness/agent.py`, `backend/app/routes/mandates.py`. Anyone
+  setting `HARNESS_MODEL` explicitly is unaffected — only the fallback
+  default changed. rules_engine.py not touched (no LLM in that path, per
+  the one rule that must never be broken).
+
+## New item — MCP server for mandate-guard
+Deliberately scoped work beyond the original build, not a pivot on scope.
+Added 2026-09-05.
+
+- `mcp-server/` wraps mandate-guard's payment safety gate as an MCP server
+  over stdio, exposing three tools — `evaluate_transaction`,
+  `check_mandate_status`, `parse_intent` — so any MCP-compatible agent can
+  call them as a discoverable integration layer.
+- 7 tests passing (`mcp-server/tests/test_tools.py`); `parse_intent`'s test
+  requires live Groq access, the other tools are deterministic.
+- Files owned by this item: `mcp-server/` only. Does not touch
+  rules_engine.py, the backend app, or the frontend.
+
+## New item — mandate-guard published to PyPI
+Added 2026-09-05.
+
+- `packages/mandate-guard` is now live on PyPI:
+  https://pypi.org/project/mandate-guard/ — `pip install mandate-guard`
+  installs the core deterministic gate (`evaluate`, `Mandate`,
+  `TransactionRequest`) standalone, no backend/API required.
+- Verified end-to-end: built with `python -m build`, passed `twine check`,
+  uploaded, then installed fresh into an isolated venv and imported
+  successfully (`from mandate_guard import evaluate`).
+- `eval/` (the blind adversarial injection-detection dataset and harness)
+  is now committed in the main repo on GitHub, not local-only.
+
 ## Open questions — flag, don't silently decide
 - Frontend host port is 7009, not 3000/4000 (both collided locally) —
   confirmed in docker-compose.yml and README, NEXT_PUBLIC_API_BASE_URL

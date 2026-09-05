@@ -4,6 +4,10 @@ A deterministic safety gate for AI agents that spend money.
 
 ## Use it
 
+```bash
+pip install mandate-guard
+```
+
 ```python
 from datetime import datetime, time
 from mandate_guard import Mandate, TransactionRequest, evaluate
