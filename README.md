@@ -1,6 +1,27 @@
-# MandateCheck
+<p align="center">
+  <img src="assets/logo.svg" alt="MandateCheck logo" width="140" />
+</p>
 
-A deterministic safety gate for AI agents that spend money.
+<h1 align="center">MandateCheck</h1>
+
+<p align="center"><em>A deterministic checkpoint between AI agents and the money they try to move.</em></p>
+
+<p align="center">
+  <a href="https://pypi.org/project/mandate-guard/"><img src="https://img.shields.io/pypi/v/mandate-guard.svg" alt="PyPI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT"></a>
+  <a href="eval/REPORT.md"><img src="https://img.shields.io/badge/eval-report-blue.svg" alt="Eval report"></a>
+</p>
+
+---
+
+> **96.67% recall · 0% false positives · blind held-out eval**
+> [Methodology and per-entry results →](eval/REPORT.md)
+
+---
+
+## What it does
+
+When an AI agent has permission to make payments on your behalf, something has to make sure it stays within the rules — even if the agent gets confused, is fed bad instructions, or tries to do something it wasn't authorized to do. MandateCheck sits between the agent and the payment and checks every proposed transaction against a mandate you define before any money moves. The one rule that never changes: the allow/block decision is never made by an AI model. It's a fixed set of checks, run in order, every time.
 
 ## Use it
 
@@ -36,31 +57,50 @@ result = evaluate(txn, mandate, context={"now": datetime(2026, 8, 15, 10, 30)})
 
 This is the core gate. Everything else — the API, the dashboard, the Razorpay integration — is built on top of this function.
 
-## What it does
+## MCP server
 
-When an AI agent has permission to make payments on your behalf, something has to make sure it stays within the rules — even if the agent gets confused, is fed bad instructions, or tries to do something it wasn't authorized to do.
+`mcp-server/` exposes the same gate as an MCP server, so any MCP-compatible AI agent can call it as a tool instead of importing it as a library. It runs over stdio, holds no decision logic of its own, and calls `evaluate()` underneath.
 
-MandateCheck sits between the agent and the payment. Before any transaction goes through, it checks the request against a mandate you define — how much can be spent, at which merchants, in which categories, and when. If a transaction matches the rules, it's allowed. If it doesn't, it's blocked, before any money moves.
+```bash
+pip install -e packages/mandate-guard
+pip install -e mcp-server
+mandatecheck-mcp
+```
 
-The one rule that never changes: the allow/block decision is never made by an AI model. It's a fixed set of checks, run in order, every time. An agent can be manipulated. A hardcoded rule can't be talked out of what it's designed to check.
+Three tools: `evaluate_transaction` checks one proposed payment against a mandate. `check_mandate_status` reports whether a mandate is usable and how much room is left under its caps. `parse_intent` turns a sentence into a proposed mandate for a human to confirm — the only one of the three that calls a model, and its output never reaches an allow/block decision.
 
-## Why this matters
+Full tool schemas and examples: [mcp-server/README.md](mcp-server/README.md)
 
-AI agents are starting to be given real spending authority. That authority is only as safe as the layer verifying it. Prompt injection — feeding an AI system content designed to manipulate its behavior — is a real, documented risk in exactly this scenario.
+## The proof
 
-We tested this directly. A real language model, given a normal shopping task and content containing a hidden instruction to redirect payment to an unauthorized account, complied — it proposed sending money to an account it was never authorized to pay. MandateCheck blocked it. Not because the model reconsidered, it didn't, but because the transaction it proposed didn't match the mandate, and the gate doesn't ask an AI whether something feels right. It checks.
+AI agents are starting to be given real spending authority. We tested what happens when that authority is attacked. A real, live language model, given a normal shopping task and content containing a hidden instruction to redirect payment to an unauthorized account, complied — it proposed sending money to an account it was never authorized to pay. MandateCheck blocked it. Not because the model reconsidered — it didn't — but because the transaction it proposed didn't match the mandate, and the gate doesn't ask an AI whether something feels right. It checks.
+
+| Metric | Baseline | After improvement |
+|---|---|---|
+| Recall | 0% (0/30) | 96.67% (29/30) |
+| False positives | 25% (5/20) | 0% (0/20) |
+| F1 | 0.00 | 0.98 |
+
+Tested against a blind held-out adversarial dataset the detector was never tuned on.
+
+The one miss: pure scarcity/urgency framing ("price lock expires in 4 minutes") with no explicit override or verification-deferral language — indistinguishable from legitimate flash-sale copy by deterministic means.
+
+Full methodology, dataset, and per-entry results: [eval/REPORT.md](eval/REPORT.md)
 
 ## How it works
 
 1. An AI agent proposes a transaction: an amount, a merchant, a category.
-2. MandateCheck checks it: is the mandate active and not expired? Has this exact transaction already been submitted (replay protection)? Is it within the spend caps — per transaction, over a rolling window, and over the mandate's lifetime? Is it an approved merchant and category? Is it inside the allowed time window? Does the content behind the request show structural or contextual signs of manipulation — false-authority claims, recipient/beneficiary swaps, embedded system-message-style payloads, price misdirection, Unicode homoglyph/zero-width tricks, or urgency paired with deferred verification — all checked deterministically, no model call?
-3. If everything checks out, the transaction is forwarded to Razorpay's real test-mode payment API.
-4. If anything fails, it's blocked, with a specific, logged reason.
-5. Every decision streams live to a dashboard. Any mandate's access can be revoked instantly.
+2. Is the mandate active and not expired?
+3. Has this exact transaction already been submitted (replay protection)?
+4. Is it within the per-transaction spend cap?
+5. Is it within the rolling-window spend cap?
+6. Is it within the mandate's lifetime spend cap?
+7. Is it an approved merchant?
+8. Is it an approved category?
+9. Is it inside the allowed time window?
+10. Does the content behind the request show structural or contextual signs of manipulation — false-authority claims, recipient/beneficiary swaps, embedded system-message-style payloads, price misdirection, Unicode homoglyph/zero-width tricks, or urgency paired with deferred verification — checked deterministically, no model call?
 
-## Beyond blocking: reviewing after the fact
-
-Not every questionable case is clear-cut in the moment. If a completed transaction looks wrong in hindsight, a claim can be filed against it. A separate review step checks the claim against what the mandate actually authorized and produces a recommendation: approve a reversal, deny the claim, or send it to a human for review. It never reverses funds on its own. It only ever recommends.
+If everything checks out, the transaction is forwarded to Razorpay's real test-mode payment API. If anything fails, it's blocked, with a specific, logged reason. Every decision streams live to a dashboard, and any mandate's access can be revoked instantly.
 
 ## What's real vs. simulated
 
@@ -70,15 +110,20 @@ Not every questionable case is clear-cut in the moment. If a completed transacti
 
 ## Metrics
 
-Measured directly against this codebase, not estimated. Testing-environment numbers, not production metrics.
+Measured directly against this codebase, not estimated. Testing-environment numbers, not production metrics. Injection-detection eval numbers are in [The Proof](#the-proof) above.
 
 - **Real Razorpay test-mode transactions:** 30 — created during testing/demo runs, not production traffic.
 - **POST /evaluate_transaction response time:** p50 124.6ms, p95 192.8ms, n=50 real sequential requests (25 allow / 25 block, mixing per-transaction-cap, merchant, category, and replay block cases) against a live mandate. Measured locally: native Python/uvicorn backend + local Postgres, not Docker Compose and not Render/production — a deployed environment would show different numbers.
 - **TOCTOU spend-cap fix:** 5 concurrent requests against a window cap that only 1 should pass, run 5 times. Pre-fix: wrongly allowed 2 through instead of 1 in 1 of 5 runs (off by one request), 4 of 5 runs passed. Post-fix: 5 of 5 runs correct, no exceptions.
 - **TOCTOU replay fix:** 8 concurrent requests carrying an identical transaction_id, run 5 times. Pre-fix: crashed with an unhandled database error (`psycopg2.errors.UniqueViolation`) in 5 of 5 runs. Post-fix: 5 of 5 runs correct, no exceptions. Race-condition reproduction is inherently non-deterministic — these are this run's actual numbers on this machine, not a guaranteed worst case.
-- **Injection-detection eval (checks 9–10):** held-out eval results, not production metrics. Measured against a 50-entry adversarial dataset (30 malicious, 20 benign) generated blind, without access to the detector's patterns. Baseline (before improvement): 0% recall (0/30 malicious caught), 25% false-positive rate (5/20 benign wrongly flagged/blocked). After improvement: 96.67% recall (29/30), 0% false positives (0/20), F1 0.98. One miss remains: pure scarcity/urgency framing without deferred-verification language, indistinguishable from legitimate flash-sale copy by deterministic means.
 
-Full methodology, dataset, and per-entry results: [eval/REPORT.md](eval/REPORT.md)
+## The dashboard
+
+A live monitoring UI at [mandatecheck-dqv.pages.dev](https://mandatecheck-dqv.pages.dev), backed by [mandatecheck-backend.onrender.com](https://mandatecheck-backend.onrender.com): a mandate-creation form, a live decision feed over WebSockets, and a kill switch to revoke a mandate instantly. It's one way to interact with the gate, not the gate itself — the Python function and the MCP server work standalone without it.
+
+## Additional capabilities
+
+Not every questionable case is clear-cut in the moment. If a completed transaction looks wrong in hindsight, a claim can be filed against it. A separate review step checks the claim against what the mandate actually authorized and produces a recommendation: approve a reversal, deny the claim, or send it to a human for review. It never reverses funds on its own. It only ever recommends.
 
 ## Known limitations
 
@@ -92,6 +137,10 @@ Full methodology, dataset, and per-entry results: [eval/REPORT.md](eval/REPORT.m
 
 FastAPI, PostgreSQL, SQLAlchemy · Next.js, React, Tailwind · LiteLLM/Groq (used only for the adversarial test harness and escalated-claim summaries, never for the core allow/block decision) · Razorpay test-mode API · Docker Compose
 
-## Getting Started
+## Getting started
 
 To reset to a clean demo state: `python backend/seed_demo.py`
+
+## License
+
+MIT — see [LICENSE](LICENSE).
