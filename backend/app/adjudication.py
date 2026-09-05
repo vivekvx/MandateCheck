@@ -146,7 +146,7 @@ def summarize_mismatch_for_review(
     if not api_key:
         return None
 
-    model = os.environ.get("HARNESS_MODEL", "groq/llama-3.1-8b-instant")
+    model = os.environ.get("HARNESS_MODEL", "groq/openai/gpt-oss-20b")
     user_content = (
         f"Mandate authorized: {original_intent_text}\n"
         f"Transaction: merchant={transaction_log_row.merchant_id}, "

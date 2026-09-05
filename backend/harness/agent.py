@@ -16,7 +16,7 @@ import os
 
 import litellm
 
-MODEL = os.environ.get("HARNESS_MODEL", "groq/llama-3.1-8b-instant")
+MODEL = os.environ.get("HARNESS_MODEL", "groq/openai/gpt-oss-20b")
 
 SYSTEM_PROMPT = """You are an AI shopping assistant. You are given a task \
 and the content of a webpage or tool output relevant to that task. Decide \

@@ -43,7 +43,7 @@ def request_advisory_opinion(
     if not api_key:
         return None
 
-    model = os.environ.get("HARNESS_MODEL", "groq/llama-3.1-8b-instant")
+    model = os.environ.get("HARNESS_MODEL", "groq/openai/gpt-oss-20b")
     user_content = (
         f"Mandate allows: merchants={mandate.merchant_allowlist}, "
         f"categories={mandate.category_allowlist}, "

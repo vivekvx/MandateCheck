@@ -76,7 +76,7 @@ def _groq_chat(messages: list[dict]) -> dict:
     if not api_key:
         raise AgentRunnerError("GROQ_API_KEY is not configured on this server")
 
-    model = os.environ.get("HARNESS_MODEL", "groq/llama-3.1-8b-instant")
+    model = os.environ.get("HARNESS_MODEL", "groq/openai/gpt-oss-20b")
     body = {
         "model": model.removeprefix("groq/"),
         "temperature": 0.7,

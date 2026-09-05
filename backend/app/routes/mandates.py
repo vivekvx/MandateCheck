@@ -179,7 +179,7 @@ def parse_intent(request: Request, payload: ParseIntentRequest):
             detail="natural-language parsing is not configured on this server",
         )
 
-    model = os.environ.get("HARNESS_MODEL", "groq/llama-3.1-8b-instant")
+    model = os.environ.get("HARNESS_MODEL", "groq/openai/gpt-oss-20b")
     body = {
         "model": model.removeprefix("groq/"),
         "temperature": 0,
