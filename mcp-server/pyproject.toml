@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mandatecheck-mcp"
+version = "0.1.0"
+description = "MCP server that lets any AI agent use MandateCheck's payment safety gate as a tool"
+requires-python = ">=3.10"
+# The gate itself is mandate-guard. This package is an integration layer and
+# holds no decision logic, so it needs nothing from the MandateCheck web app —
+# no FastAPI, no database driver, no Postgres.
+dependencies = [
+    "mcp>=2.0,<3",
+    "mandate-guard>=0.1.0",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+# parse_intent is the one tool that calls a model. It is optional on purpose:
+# evaluate_transaction and check_mandate_status must work without it.
+llm = ["litellm>=1.0"]
+test = ["pytest>=7.0"]
+
+[project.scripts]
+mandatecheck-mcp = "mandatecheck_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mandatecheck_mcp"]
